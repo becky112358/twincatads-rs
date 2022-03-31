@@ -6,7 +6,7 @@ authors = ["Thomas C. Bitsky Jr. <noreply@automateddesign.com>"]
 license = "MIT"
 homepage = "https://automateddesign.com"
 repository = "https://github.com/rhythmchicago/twincatads-rs"
-documentation = ""
+documentation = "https://github.com/rhythmchicago/twincatads-rs"
 description = "Rust wrapper for TwinCAT ADS library provided with Beckhoff TwinCAT."
 
 
