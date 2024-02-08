@@ -4,7 +4,15 @@
 
 // pull in the bindings that were generated into the target build directory.
 // this will be something like target/build/bind-test@#$%^%^##/out/bindings.rs
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+
+// include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+
+#[cfg(target_arch = "x86")]
+include!(concat!(env!("OUT_DIR"), "/bindings_32.rs"));
+
+#[cfg(target_arch = "x86_64")]
+include!(concat!(env!("OUT_DIR"), "/bindings_64.rs"));
+
 
 impl AmsNetId_ {
     pub fn new() -> Self {
@@ -20,11 +28,31 @@ impl AmsAddr {
 }
 
 
+/// Structure containing information about a symbol in the PLC that
+/// has been retrieved back from the PLC.
+impl AdsSymbolEntry {
+    pub fn new() -> Self {
+        AdsSymbolEntry {
+            entryLength: 0,
+            iGroup: 0,
+            iOffs: 0,
+            size: 0,
+            dataType: 0,
+            flags: 0,
+            nameLength: 0,
+            typeLength: 0,
+            commentLength: 0,
+        }
+    }
+}
+
+
+
 #[cfg(test)]
 mod tests {
 
     use super::*;
-    use std::{time};
+    use std::time;
 
     
     #[test]
