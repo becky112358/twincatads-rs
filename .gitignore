@@ -1,1 +1,11 @@
 /target
+.vscode/
+.vs/
+
+*.~u
+_Boot/
+_Config/
+_Libraries/
+_CompileInfo/
+*.tclrs
+*.bak

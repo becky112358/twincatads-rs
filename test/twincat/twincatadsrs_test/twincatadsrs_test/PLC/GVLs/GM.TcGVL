@@ -1,0 +1,28 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.12">
+  <GVL Name="GM" Id="{b99e3b33-2868-495c-96c0-4b86339a31af}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	
+	// Simulated bit value.
+	bBit : BOOL;
+	// Simulated integer value.
+	nInteger : INT;
+	// Simulated real value.
+	fReal : REAL;
+	
+	// Target string variable to test writing strings.
+	sTarget : T_MaxString;
+	
+	// A string that will echo the value of sTarget to test reading back strings.
+	sEcho : T_MaxString;
+	
+	jit : _Implicit_Jitter_Distribution;
+	
+	stTestStruct : S_TestStruct;
+	
+	aTestArray : ARRAY [ 0 .. 9 ] OF REAL;
+	
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

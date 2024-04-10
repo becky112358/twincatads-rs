@@ -13,6 +13,9 @@ include!(concat!(env!("OUT_DIR"), "/bindings_32.rs"));
 #[cfg(target_arch = "x86_64")]
 include!(concat!(env!("OUT_DIR"), "/bindings_64.rs"));
 
+// Pull in adcs client module.
+pub mod client;
+
 
 impl AmsNetId_ {
     pub fn new() -> Self {

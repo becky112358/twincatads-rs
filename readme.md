@@ -1,6 +1,6 @@
 # twincatads-rs
 
-A rust wrapper for the TwinCAT ADS library provided by Beckhoff.
+A rust wrapper for the TwinCAT ADS library provided by Beckhoff. Includes a convenient client class that makes connecting to a target trivial.
 
 ## Description
 
@@ -21,7 +21,7 @@ When trying to connect via ADS on a system where TwinCAT XAR or XAE is already i
 
 - Add the dependency to Cargo.toml
 
-`twincatads-rs = "0.2"`
+`twincatads-rs = "0.3"`
 
 
 
@@ -39,7 +39,7 @@ Example:
 
 
 However, we have not needed this with more current versions of Bindgen, although Bindgen's documention still lists
-the requirement. My advice is to install as needed.
+the requirement. Our advice is to install as needed.
 
 - Build with cargo
 
@@ -59,6 +59,85 @@ To build a 32-bit version:
 
 
 # Demo
+
+
+Using the recommended client library, including channels for notifications.
+
+```
+    let (mut client, rx) = AdsClient::new();
+    // Supply AMS Address. If not set, localhost is used.
+    client.set_address("192.168.127.1.1.1");
+    
+    // Supply ADS port. If not set, the default of 851 is used.
+    // You should generally use the default.
+    client.set_port(851);
+     
+    // Make the connection to the ADS router
+    client.initialize();
+    
+    // Write a value to a symbol in the PLC
+    if let Err(err) = client.write_symbol_string_value(
+        "GM.sTarget",
+        "There is no spoon."
+    ) {
+        println!("An error occurred writing the tag: {}", err);
+    }
+
+    match client.read_symbol_value::<MaxString>("GM.sEcho") {
+        Ok(val) => info!("STRING VALUE: {:?}", val.to_string()),
+        Err(err) => error!("I failed to read the string tag: {}", err)
+    }
+
+    match client.read_symbol_value::<MaxString>("GK.sReadTest") {
+        Ok(val) => info!("STRING VALUE: {:?}", val.to_string()),
+        Err(err) => error!("I failed to read the string tag: {}", err)
+    }    
+    
+    match client.read_symbol_string_value("GM.sEcho") {
+        Ok(val) => info!("STRING VALUE: {:?}", val.to_string()),
+        Err(err) => error!("I failed to read the string tag: {}", err)
+    }    
+    
+
+    const NOTIFY_TAG :&str = "GM.fReal";
+    
+    if let Err(err) = client.register_symbol(NOTIFY_TAG) {
+        error!("Failed to register symbol: {}", err);
+    }
+    else {
+        let mut line = String::new();
+
+
+        // On the parent context (e.g., main thread), listen for notifications
+        thread::spawn(move || {
+
+            //
+            // When you call .iter() on a Receiver, you get an iterator that blocks waiting for new messages, 
+            // and it continues until the channel is closed.
+            //
+            for notification in rx.iter() {
+                println!("Notification received: {} : {}", notification.name, notification.value);
+                // Handle the notification...
+            }
+        });
+
+
+        std::io::stdin().read_line(&mut line).expect("Failed to read line");
+
+        // if let Err(err) = client.unregister_symbol(NOTIFY_TAG) {
+        //     error!("Failed to unregister symbol: {} ", err);
+        // }
+    }
+    
+
+
+    // Make sure the ADS client is closed.
+    client.finalize();
+        
+```
+
+
+Simple example using the Beckhoff API directly.
 
 ```
 use std::{time};
@@ -103,6 +182,7 @@ pub fn hello_ads() {
     }
 }
 ```
+
 
 
 # License
