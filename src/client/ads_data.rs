@@ -2,15 +2,16 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:11:58
 // -----
-// Last Modified: 2024-04-10 16:34:12
+// Last Modified: 2024-04-11 14:34:54
 // -----
 // 
 //
 
+use indexmap::IndexMap;
 use mechutil::variant::VariantValue;
 use zerocopy::{AsBytes, FromBytes};
 use anyhow::{anyhow, Error};
-use std::{collections::HashMap, convert::TryFrom};
+use std::convert::TryFrom;
 
 use super::ads_symbol_loader::{AdsSymbolCollection, AdsSymbolInfo};
 
@@ -106,10 +107,10 @@ pub fn deserialize_structure(
     bytes : &Vec<u8>, 
     type_id : &AdsDataTypeId 
 ) -> Option<VariantValue> {
+    
+    if let Some(dt) = symbol_collection.get_fundamental_type_info(&symbol_info) {
 
-    if let Some(dt) = symbol_collection.data_types.get(&symbol_info.type_name) {
-
-        let mut map : HashMap<String, VariantValue> = HashMap::new();
+        let mut map : IndexMap<String, VariantValue> = IndexMap::new();
 
         let mut offset: usize = 0;
         for field in &dt.fields {
@@ -128,46 +129,24 @@ pub fn deserialize_structure(
                     }
                     
                 }
-                else if field_info.array_data_size > 0 {
+                else if field.is_array {
                     match AdsDataTypeId::try_from(field.type_id) {
                         Ok(field_type_id) => {
 
-                            let mut arr = Vec::new();
-                        
-                            let inner_array1 = VariantValue::Array(vec![VariantValue::Int32(1), VariantValue::Int32(2)]);
-                            let inner_array2 = VariantValue::Array(vec![VariantValue::Int32(3), VariantValue::Int32(4)]);
-                            let outer_array = VariantValue::Array(vec![inner_array1, inner_array2]);                        
-                            
+                            let arr = deserialize_array(
+                                symbol_collection, 
+                                field, 
+                                &bytes[offset..offset + field.size as usize].to_vec(), 
+                                &field_type_id
+                            );
 
-                            for col in &field_info.array_dimensions {
-                                let mut array_elements = Vec::new();
-
-                                for i in 0 .. *col {
-
-
-
-                                    if let Some(val) = deserialize(
-                                        symbol_collection, 
-                                        symbol_info, 
-                                        &bytes[offset..offset + field.size as usize].to_vec(),
-                                        &field_type_id
-                                    ) {
-                                        array_elements.push(val);
-                                    }
-                                    else {
-                                        array_elements.push(VariantValue::Null);
-                                    }
-                                }
-
-                                arr.push(array_elements);
+                            if let Some(var) = arr {
+                                map.insert(field.name.clone(), var);
                             }
-
-
-
-
+                            else {
+                                map.insert(field.name.clone(), VariantValue::Null);
+                            }
                             
-
-                            map.insert(field.name.clone(), arr);
                         },
                         Err(err) => {
                             log::error!("Error processing field {} type {} err: {}", field.name, field.type_id, err);
@@ -179,7 +158,7 @@ pub fn deserialize_structure(
                     // plain old data
                     match AdsDataTypeId::try_from(field.type_id) {
                         Ok(field_type_id) => {
-                            if let Some(val) = deserialize(
+                            if let Some(val) = deserialize_value(
                                 symbol_collection, 
                                 symbol_info, 
                                 &bytes[offset..offset + field.size as usize].to_vec(), 
@@ -207,6 +186,7 @@ pub fn deserialize_structure(
 
     }
     else {
+        log::error!("Failed to find structure type name: {}", symbol_info.type_name);
         return None;
     }
 
@@ -220,30 +200,81 @@ pub fn deserialize_array(
     symbol_info: &AdsSymbolInfo,
     bytes : &Vec<u8>, 
     type_id : &AdsDataTypeId 
-) {
+) -> Option<VariantValue> {
+
+    if let Some(symbol_dt) = symbol_collection.data_types.get(&symbol_info.type_name) {
+
+        let mut inc = 0;
+
+        // Now let's get the type name
+        if let Some(of) = symbol_dt.name.find("OF") {
+            let val_type = symbol_info.type_name[of + 3..].to_string();
+            if let Some(val_dt) = symbol_collection.data_types.get(&val_type) {
+                inc = val_dt.size as usize;
+            }
+        }
+        else {
+            return None;
+        }
+
+    
+        let mut arr = Vec::new();
+
+        let mut offset = 0;
+
+        for col in &symbol_info.array_dimensions {            
+
+            let mut array_elements = Vec::new();
+    
+            for _i in 0 .. *col {
+
+                if let Some(val) = deserialize_value(
+                    symbol_collection, 
+                    symbol_info, 
+                    &bytes[offset..offset + inc as usize].to_vec(),
+                    &type_id
+                ) {
+                    array_elements.push(val);
+                }
+                else {
+                    array_elements.push(VariantValue::Null);
+                }
+
+                offset += inc;
+            }
+    
+            arr.push(array_elements);
+        }            
+
+
+        if arr.len() > 1 {
+            // 2D array
+            let arr1 = VariantValue::Array(arr[0].clone());
+            let arr2 = VariantValue::Array(arr[1].clone());
+            return Some(VariantValue::Array(vec![arr1, arr2]));
+        }
+        else if arr.len() == 1 {
+            return Some(VariantValue::Array(arr[0].clone()));
+        }
+        else {
+            return None;
+        }
+        
+    }
+    else {
+        return None;
+    }
 
 }
 
 
-/// Deserialize a byte stream into the appropriate type.
-pub fn deserialize(
+/// Deserialize a value, either P.O.D. or a structure.
+pub fn deserialize_value(
     symbol_collection: &AdsSymbolCollection,  
     symbol_info: &AdsSymbolInfo,
     bytes : &Vec<u8>, 
     type_id : &AdsDataTypeId 
-) -> Option<VariantValue> {
-
-    log::debug!("deserialize type id: {:?} is array {}", type_id, symbol_info.is_array);
-
-
-    if symbol_info.is_array {
-        return deserialize_structure(
-            symbol_collection, 
-            symbol_info, 
-            bytes, 
-            &type_id
-        );
-    }
+) -> Option<VariantValue> {    
 
     match type_id {
         AdsDataTypeId::Void => return None,
@@ -343,6 +374,150 @@ pub fn deserialize(
             );
         },
         AdsDataTypeId::MaxTypes => return None // Not an actual type; just a marker for maximum built-in types
+    }    
+}
+
+
+
+/// Deserialize a byte stream into the appropriate type.
+pub fn deserialize(
+    symbol_collection: &AdsSymbolCollection,  
+    symbol_info: &AdsSymbolInfo,
+    bytes : &Vec<u8>, 
+    type_id : &AdsDataTypeId 
+) -> Option<VariantValue> {
+
+    if symbol_info.is_array {
+        return deserialize_array(
+            symbol_collection, 
+            symbol_info, 
+            bytes, 
+            &type_id
+        );
+    }
+    else {
+        return deserialize_value(
+            symbol_collection, 
+            symbol_info, 
+            bytes, 
+            &type_id
+        );
+    }
+}
+
+/// Serialize an array variant properly for the controller, which will not be byte-aligned as compactly
+/// as the default VariantValue serialize functions will be. This function uses information
+/// from the symbol table to align values properly.
+pub fn serialize_array(
+    symbol_collection: &AdsSymbolCollection,  
+    symbol_info: &AdsSymbolInfo,    
+    value : &VariantValue
+) -> Result<Vec<u8>, anyhow::Error> {
+
+    match value {
+        VariantValue::Array(arr) => {
+            let mut all_bytes = Vec::new();
+
+            for item in arr {
+                match serialize(symbol_collection, symbol_info, item) {
+                    Ok(bytes) => {
+                        all_bytes.extend(bytes);
+                    },
+                    Err(err) => {
+                        return Err(anyhow!("Error serializing an array index : {}", err));
+                    }
+                }
+            }
+
+            if all_bytes.len() < symbol_info.size as usize {
+                all_bytes.resize(symbol_info.size as usize, 0);
+            }        
+
+            Ok(all_bytes)
+        },
+        _ => Err(anyhow!("Expected VariantValue::Object for serialization")),
     }
 
+}
+
+
+/// Serialize a structured variant properly for the controller, which will not be byte-aligned as compactly
+/// as the default VariantValue serialize functions will be. This function uses information
+/// from the symbol table to align values properly.
+pub fn serialize_struct(
+    symbol_collection: &AdsSymbolCollection,  
+    symbol_info: &AdsSymbolInfo,    
+    value : &VariantValue) -> Result<Vec<u8>, anyhow::Error> {
+
+    match value {
+        VariantValue::Object(boxed_map) => {
+            let mut all_bytes = Vec::new();
+
+            if let Some(dt) = symbol_collection.get_fundamental_type_info(symbol_info) {
+
+                let mut count = 0;
+                // Iterate over the IndexMap and serialize each key-value pair
+                for (key, val) in boxed_map.iter() {
+
+                    if count < dt.fields.len() {
+                        let field = &dt.fields[count];
+
+                        match serialize(symbol_collection, field, val) {
+                            Ok(bytes) => {
+                                all_bytes.extend(bytes);
+                            },
+                            Err(err) => {
+                                return Err(anyhow!("Error serializing field {} : {}", key, err));
+                            }
+                        }
+    
+                        count += 1;    
+                    }
+                    else {
+                        return Err(anyhow!("count {} >= files length {}", count, dt.fields.len()));
+                    }
+                }
+
+                if all_bytes.len() < dt.size as usize {
+                    all_bytes.resize(dt.size as usize, 0);
+                }                
+    
+                Ok(all_bytes)                
+
+            }
+            else {
+                return Err(anyhow!("Failed to get type information for structure {}", symbol_info.name));
+            }
+
+        },
+        _ => Err(anyhow!("Expected VariantValue::Object for serialization")),
+    }
+
+}
+
+
+
+
+/// Serialize a variant properly for the controller, which will not be byte-aligned as compactly
+/// as the default VariantValue serialize functions will be. This function uses information
+/// from the symbol table to align values properly.
+pub fn serialize(
+    symbol_collection: &AdsSymbolCollection,  
+    symbol_info: &AdsSymbolInfo,
+    value : &VariantValue) -> Result<Vec<u8>, anyhow::Error> {
+    
+    match &*value {
+        VariantValue::Array(_) => {
+
+            return serialize_array(symbol_collection, symbol_info,value);
+
+        }
+        VariantValue::Object(_) => {
+            
+            return serialize_struct(symbol_collection, symbol_info,value);
+
+        },
+        _ =>  return value.get_bytes()
+    }    
+    
 }

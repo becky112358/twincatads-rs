@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:17:55
 // -----
-// Last Modified: 2024-04-09 14:31:08
+// Last Modified: 2024-04-11 16:37:13
 // -----
 // 
 //
@@ -16,14 +16,28 @@ use zerocopy_derive::{AsBytes, FromBytes, FromZeroes};
 
 use super::ads_data::AdsDataTypeId;
 
+
+/// Enumbers the type of event that is being transmitted.
+#[derive(Debug, Clone)]
+pub enum EventInfoType {
+    Invalid = 0,
+    DataChange = 1,
+    AdsState = 2,
+    RouterState = 3
+}
+
 /// Stores the event details from an on Data change notification from
 /// the ADS router. This structure is passed via a channel from the 
 /// ADS Router thread context into the thread context of the AdsClient.
 pub struct DataChangeEventInfo {
+
+    /// The type of event that is being transmitted.
+    pub event_type : EventInfoType,
     /// Id of the symbol about which the notification was received.
     pub id : u32,
     /// The bytes received from the ADS router    
     pub data : Vec<u8>
+    
 }
 
 

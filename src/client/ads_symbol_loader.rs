@@ -51,7 +51,10 @@ pub struct AdsSymbolInfo {
     /// If true, this symbol is a structure
     pub is_structure : bool,
     /// If ture, this symbol is an array
-    pub is_array : bool
+    pub is_array : bool,
+
+    /// Dimensions of array, if it is one.
+    pub array_dimensions : Vec<usize>,
 }
 
 
@@ -67,7 +70,8 @@ impl AdsSymbolInfo {
             type_name: String::new(),
             comment: String::new(),
             is_structure : false,
-            is_array : false
+            is_array : false,
+            array_dimensions: Vec::new()
         }
     }
 
@@ -144,14 +148,46 @@ impl AdsDataTypeInfo {
 
 
 
-
+/// A collection of the symbols and data type information uploaded from
+/// the target. Used by the client to properly serialize and deserialize data.
 #[derive(Clone)]
 pub struct AdsSymbolCollection {
     /// A collection of the symbols uploaded from the controller.
     /// A BTreeMap naturally keeps the symbol keys in alphabetical order.
     pub symbols : BTreeMap<String, AdsSymbolInfo>,
+    /// A collection of the data types uploaded from the controller.
     pub data_types : BTreeMap<String, AdsDataTypeInfo>
 }
+
+
+impl AdsSymbolCollection {
+
+
+    /// Returns the fundamental type of a symbol. If a symbol is plain old data, the returned type
+    /// will match what would be returned by simply using the .get method on the data types member.
+    /// However, if the symbol is an array or reference, then the fundamental type is the value
+    /// listed after the 'OF' word. In other words, if the symbol is an ARRAY [..] OF REAL, then the
+    /// fundamental type is REAL, and that is the type info that will be returned.
+    /// 
+    /// Returns NONE if not found.
+    pub fn get_fundamental_type_info(&self, symbol_info : &AdsSymbolInfo) -> Option<AdsDataTypeInfo> {
+        if symbol_info.type_name.contains("OF") {
+            if let Some(start) = symbol_info.type_name.find("OF") {
+                let type_name = symbol_info.type_name[start + 3..].to_string();
+                return self.data_types.get(&type_name).clone().cloned();    
+            }
+            else {
+                // Should not reach here.
+                return None;
+            }
+        }
+        else {
+            return self.data_types.get(&symbol_info.type_name).clone().cloned();
+        }
+    }
+}
+
+
 
 
 /// Extract a string from a byte stream. If the string cannot be
@@ -202,7 +238,8 @@ fn parse_datatype_entry_field(item : &AdsDatatypeEntry, buffer: &Box<[u8]>, offs
             type_name: String::new(),
             comment: String::new(),
             is_structure : item.subItems > 0,
-            is_array : item.arrayDim > 0
+            is_array : false,
+            array_dimensions : Vec::new()
         };
 
 
@@ -222,6 +259,11 @@ fn parse_datatype_entry_field(item : &AdsDatatypeEntry, buffer: &Box<[u8]>, offs
             if let Ok(cmt) = String::from_utf8(buffer[comment_start..comment_end].to_vec()) {
                 ret.comment = cmt;
             }
+        }
+
+        ret.is_array = ret.type_name.contains("ARRAY");
+        if ret.is_array {
+            set_symbol_array_length(&mut ret);
         }
 
 
@@ -396,6 +438,73 @@ fn parse_datatypes( buffer: &Box<[u8]>) -> BTreeMap<String, AdsDataTypeInfo> {
 }
 
 
+/// Parse an array range declration "X...Y" to get the number of elements in an array.
+fn parse_array_range(declaration : &str) -> usize {
+    let tokens : Vec<&str> = declaration.split("..").collect();
+
+    if tokens.len() < 2 {
+        return 0;
+    } 
+    else {
+        if let Ok(lower)  = tokens[0].parse::<usize>() {
+            if let Ok(upper) = tokens[1].parse::<usize>() {
+                return (upper - lower) + 1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+/// Parse out the data type declaration to determine the array dimensions and
+/// update the array_dimensions field in the provided AdsSymbolInfo.
+/// # Arguments
+/// * `symbol_info` - The AdsSymbolInfo to update.
+fn set_symbol_array_length(symbol_info : &mut AdsSymbolInfo) {
+    
+    symbol_info.array_dimensions.clear();
+
+    if !symbol_info.type_name.contains("ARRAY")
+        || !symbol_info.type_name.contains("[")
+        || !symbol_info.type_name.contains("]")
+        || !symbol_info.type_name.contains("..")
+    {
+        return;
+    }
+
+    let mut start = 0;
+    let mut end = 0;
+
+    if let Some(index) = symbol_info.type_name.find("[") {
+        start = index + 1;
+    }
+    else {
+        return;
+    }
+
+    if let Some(index) = symbol_info.type_name.find("]") {
+        end = index;
+    }
+    else {
+        return;
+    }
+
+    if let Some(mid) = symbol_info.type_name.find(",") {
+        // 2D array
+
+        let first = symbol_info.type_name[start..mid].to_string();
+        let second = symbol_info.type_name[mid + 1..end].to_string();
+
+        symbol_info.array_dimensions.push(parse_array_range(&first));
+        symbol_info.array_dimensions.push(parse_array_range(&second));
+    }
+    else {
+        let range = symbol_info.type_name[start..end].to_string();
+        symbol_info.array_dimensions.push(parse_array_range(&range));
+    }
+
+}
+
 /// Returns a HashMap with symbol information uploaded from the remote
 /// controller. All the symbols are uploaded and sorted into domains.
 /// 
@@ -541,6 +650,10 @@ pub fn upload_symbols( ams_address : &AmsAddr, port : i32) -> Option<AdsSymbolCo
 
 
         symbol_info.is_array = symbol_info.type_name.contains("ARRAY");
+        if symbol_info.is_array {
+            set_symbol_array_length(&mut symbol_info);
+        }
+        
 
 
         // info!("Item {} at offset {} : {:?} ", 

@@ -1,10 +1,84 @@
 # twincatads-rs
 
 A rust wrapper for the TwinCAT ADS library provided by Beckhoff. Includes a convenient client class that makes connecting to a target trivial.
+Uploads symbol and data type information from the target to easily read and write structures and arrays. Channels are used for safe, cross-thread
+communication.
 
 ## Description
 
 When trying to connect via ADS on a system where TwinCAT XAR or XAE is already installed and running, the connections will fail. In those cases, you need to use the TcAdsDll to connect. This crate uses Bindgen to create a wrapper. Both 32- and 64-bit builds should now be supported.
+
+### Known limitations
+
+#### Strings
+
+Reading a string that is not declared as T_MaxString using read_symbol_value is not currently supported. 
+Use read_symbol_string_value instead.
+
+Writing strings with write_symbol_value is similarly limited. write_symbol_value needs a type:
+
+```
+    if let Err(err) = client.write_symbol_value::<MaxString>(
+        "GM.sTarget",
+        MaxString::from_string("I'm not even supposed to be here today.")
+    ) {
+        println!("An error occurred writing <MaxString> for: {}", err);
+    }
+```
+
+It's cleaner to simply use write_symbol_string_value:
+
+```
+    if let Err(err) = client.write_symbol_string_value(
+        "GM.sTarget",
+        "There is no spoon."
+    ) {
+        println!("An error occurred writing the tag: {}", err);
+    }
+```
+
+
+Fixed strings are possible:
+```
+fixed_str: [u8; 32],
+```
+
+#### Structures
+
+`read_symbol_value` and `write_symbol_value` need a known type with only fixed-width members, so nothing dynamic like `String` or `Vec`. If
+a structure is predefined, it can be used with `read_symbol_value` and `write_symbol_value`.
+
+Example:
+```
+use zerocopy::{AsBytes, FromBytes};
+
+#[derive(FromBytes, AsBytes, Default, Debug)]
+#[repr(C)]
+struct MyStruct {
+    field1: u32,
+    field2: u64,
+}
+
+...
+
+let st = MyStruct {
+    field1 : 123,
+    field2: 456
+};
+
+if let Err(err) = client.write_symbol_value::<MyStruct> ("GVL.myStructVariable", &st) {
+    println!("You blew it!");
+}
+
+```
+
+However, dynamic programs that don't know symbols or types until run-time don't always have the luxury of pre-defined, static types.
+Instead, those values are stored in mechutil::VariantValue instances. Structure symbols registered for on data change notification
+will automatically be parsed into a VariantValue::Object. To write a structure stored in a VariantValue::Object, use  `write_symbol_variant_value`.
+
+The VariantValue::Object must have the exact same structure as the PLC. Structures in the target don't always byte-align the same
+as they do in the local client; the adsclient handles adjusting the alignment of the data.
+
 
 ## Prerequisites
 

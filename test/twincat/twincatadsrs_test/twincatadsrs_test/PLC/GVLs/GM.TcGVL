@@ -17,11 +17,35 @@ VAR_GLOBAL
 	// A string that will echo the value of sTarget to test reading back strings.
 	sEcho : T_MaxString;
 	
-	jit : _Implicit_Jitter_Distribution;
-	
+	// Test notifications and parsing a structure. Updated every 1s.
 	stTestStruct : S_TestStruct;
 	
+	// Test notifications and parsing an array . Updated every 1s.
 	aTestArray : ARRAY [ 0 .. 9 ] OF REAL;
+	
+	// Test notifications and parsing an array of structure. Updated every 1s.
+	aStructArray : ARRAY [ 0 .. 9 ] OF S_TestStruct;
+
+	// This variable is used as a target to test writing a REAL
+	// from the client.	
+	fRealWriteTarget : REAL;
+	
+	// This variable is used as a target to test writing a simple bool
+	// from the client.
+	bBoolTarget : BOOL;
+	
+	// This variable is used as a target to test writing a structure
+	// from the client.
+	stStructWriteTarget : S_TestStruct;
+	
+
+	// This variable is used as a target to test writing an array
+	// from the client.
+	aArrayWriteTarget : ARRAY [ 0 .. 9 ] OF REAL;
+
+	// This variable is used as a target to test writing an array of
+	// structure from the client.
+	aStructArrayWriteTarget : ARRAY [ 0 .. 9 ] OF S_TestStruct;
 	
 END_VAR]]></Declaration>
   </GVL>
