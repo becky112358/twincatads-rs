@@ -291,12 +291,7 @@ fn parse_datatype_entry_item(item : &AdsDatatypeEntry, buffer: &Box<[u8]>, offse
     let name_len = item.nameLength as usize;
     let name_end = name_start + item.nameLength as usize;
 
-    log::debug!("\tcomment Len: {} entry len{} nameLen: {}", comment_len, datatype_entry_len, name_len);
-    
-
     if let Ok(nm) = String::from_utf8(buffer[name_start ..name_end].to_vec()) {
-
-        log::info!("Processing data type name: {}", nm);
 
         let array_len = item.arrayDim;
         let sub_items = item.subItems;
@@ -374,7 +369,6 @@ fn parse_datatype_entry_item(item : &AdsDatatypeEntry, buffer: &Box<[u8]>, offse
                 let field_item:&AdsDatatypeEntry = unsafe{ &*buffer[field_item_offset..entry_end].as_ptr().cast() };
 
                 if let Some(entry) = parse_datatype_entry_field(field_item, buffer, field_item_offset) {
-                    log::debug!("\tAdding field: {} of type {} with comment: {}", entry.name, entry.type_name, entry.comment);
                     ret.fields.push(entry);
                 }
                 else {
@@ -405,29 +399,19 @@ fn parse_datatypes( buffer: &Box<[u8]>) -> BTreeMap<String, AdsDataTypeInfo> {
 
     while offset < buffer.len() && buffer[offset] != 0 {        
 
-        println!("Offset: {}", offset);
-
         if let Some(inc) = u32::read_from(&buffer[offset..offset + 4]) {
             
             num_data_types += 1;        
             let item:&AdsDatatypeEntry = unsafe{ &*buffer[offset..offset + datatype_entry_len].as_ptr().cast() };
 
-            if let Some(entry) = parse_datatype_entry_item(&item, buffer, offset ) {
-                println!("Adding type {} with entry len: {} size: {}", entry.name, entry.entry_length, entry.size);
-                
-                if entry.array_data_size > 0 {
-                    println!("\tARRAY of dims: {:?}", entry.array_dimensions);
-                }
-
+            if let Some(entry) = parse_datatype_entry_item(&item, buffer, offset ) {                
                 ret.insert(entry.name.clone(), entry);
-
             }
 
 
             offset += inc as usize;
         }
         else {
-            println!("Failed to read size!");
             break;
         }
         
@@ -759,7 +743,7 @@ impl AdsSymbolCollection {
     }
 
 
-    /// Prints the symbols after sorting them alphabetically. This function cheats; it sorts 
+    /// Prints the symbols after sorting them alphabetically.
     pub fn print_sorted_symbol_list( &self ) {
 
         for item in &self.symbols {

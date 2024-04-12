@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-06 10:24:11
 // -----
-// Last Modified: 2024-04-11 14:39:45
+// Last Modified: 2024-04-12 07:14:31
 // -----
 // 
 //
@@ -20,8 +20,7 @@ use log::{info, error, debug};
 use mechutil::variant::VariantValue;
 use simplelog::*;
 
-use twincatads_rs::client::adsclient::AdsClient;
-use twincatads_rs::client::client_types::MaxString;
+use twincatads_rs::client::{AdsClient, MaxString, AdsState, RouterState};
 
 
 /// Main entry point of the program.
@@ -120,7 +119,7 @@ fn main() {
             for notification in rx.iter() {
                 //println!("Notification received: {} : {}", notification.name, notification.value);
 
-                tx_main.send(notification.value).expect("Failed to send the notification back to the main thread");
+                tx_main.send(notification).expect("Failed to send the notification back to the main thread");
 
                 // Handle the notification...
             }
@@ -132,23 +131,49 @@ fn main() {
         let mut blink = false;
         while running.load(Ordering::SeqCst) {
             match rx_main.recv_timeout(timeout) {
-                Ok(notification_value) => {
-                    println!("Notification value received in main thread: {}", notification_value);
+                Ok(notification) => {
+                    // println!("Notification type {:?} received in main thread: {}",  notification.event_type, notification.value);
 
+                    println!("Notification type {:?} received in main thread",  notification.event_type);
+                    
+                    match notification.event_type {
+                        twincatads_rs::client::client_types::EventInfoType::Invalid => {
+                            log::error!("Invalid notification received.");
+                        },
+                        twincatads_rs::client::client_types::EventInfoType::DataChange => {
 
-                    if let Err(err) = client.write_symbol_variant_value(WRITE_TAG, &notification_value) {
-                        log::error!("Failed to write struct to client: {}", err);
-
+                            if let Err(err) = client.write_symbol_variant_value(WRITE_TAG, &notification.value) {
+                                log::error!("Failed to write struct to client: {}", err);
+        
+                            }
+                            else {
+                                blink = !blink;
+                                let var_blink = VariantValue::Bit(!blink);
+        
+                                if let Err(err) = client.write_symbol_variant_value("GM.bBoolTarget", &var_blink) {
+                                    log::error!("Failed to write bool from variant to client: {}", err);
+                                }
+        
+                            }
+        
+                        },
+                        twincatads_rs::client::client_types::EventInfoType::AdsState => {
+                            match AdsState::from(notification.value) {
+                                AdsState::Running=> log::info!("Target device is RUNNING"),
+                                AdsState::Stopped => log::info!("Target device is STOPPED"),                                
+                                AdsState::Unknown => log::info!("Target device is in an unknown state."),
+                            }
+                        },
+                        twincatads_rs::client::client_types::EventInfoType::RouterState => {
+                            match RouterState::from(notification.value) {
+                                RouterState::Started => log::info!("Router is RUNNING"),
+                                RouterState::Stopped => log::info!("Router is STOPPED"),
+                                RouterState::Removed => log::info!("Router has been removed!"),
+                                RouterState::Unknown => log::info!("Router is in an unknown state."),
+                            }
+                        },
                     }
-                    else {
-                        blink = !blink;
-                        let var_blink = VariantValue::Bit(!blink);
 
-                        if let Err(err) = client.write_symbol_variant_value("GM.bBoolTarget", &var_blink) {
-                            log::error!("Failed to write bool from variant to client: {}", err);
-                        }
-
-                    }
 
                 },
                 Err(e) => {

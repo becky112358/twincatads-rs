@@ -64,8 +64,7 @@ use crate::nAmsRouterEvent_AMSEVENT_ROUTERREMOVED;
 
 use super::ads_symbol_loader::{AdsSymbolCollection, AdsSymbolInfo};
 use super::client_types::{
-    DataChangeEventInfo, 
-    RegisteredSymbol
+    AdsClientNotification, RegisteredSymbol, RouterNotificationEventInfo
 };
 
 use super::ads_data::{self, serialize, vec_to_string, AdsDataTypeId};
@@ -78,10 +77,10 @@ struct SymbolManager {
     /// The key is the handle (not the notification handle) for the symbol
     /// that was collected in the first step of registering the symbol.
     pub registered_symbols : Mutex<Vec<RegisteredSymbol>>,
-    pub notify : Mutex<Notifier::<'static, DataChangeEventInfo>>,
+    pub notify : Mutex<Notifier::<'static, RouterNotificationEventInfo>>,
     //pub data_change : Mutex<DataChangeCallback>,
-    pub sender : Mutex<Vec<Sender<DataChangeEventInfo>>>,
-    pub receiver : Mutex<Option<Receiver<DataChangeEventInfo>>>,
+    pub sender : Mutex<Vec<Sender<RouterNotificationEventInfo>>>,
+    pub receiver : Mutex<Option<Receiver<RouterNotificationEventInfo>>>,
     pub is_running : Mutex<bool>
 
 }
@@ -190,62 +189,6 @@ fn get_new_id() -> u32 {
     COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
-
-
-/// Notification data for a registered symbol data change event.
-#[derive(Debug, Clone)]
-pub struct AdsClientNotification {    
-    /// The type of event that is being transmitted.
-    pub event_type : EventInfoType,
-
-    /// Monotonic tick representing when the notification was received.
-    pub timestamp: Instant,
-    /// Name of the symbol or tag for which this value was received.
-    pub name : String,
-    /// The value received
-    pub value : VariantValue
-}
-
-impl AdsClientNotification {
-
-    /// Construct a new DataChangeNotification with the current timestamp.
-    pub fn new() -> Self {
-        return Self { 
-            event_type : EventInfoType::Invalid,
-            timestamp : Instant::now(),
-            name: String::new(),
-            value: VariantValue::Null
-        };
-    }
-
-    pub fn new_datachange(name : &str, val : &VariantValue) -> Self {
-        return Self { 
-            event_type : EventInfoType::DataChange,
-            timestamp : Instant::now(),
-            name: name.to_string(),
-            value: val.clone()
-        };
-    }    
-
-    pub fn new_ads_state(state : i16) -> Self {
-        return Self { 
-            event_type : EventInfoType::AdsState,
-            timestamp : Instant::now(),
-            name: String::new(),
-            value: VariantValue::from(state)
-        };
-    }    
-
-    pub fn new_router_state(state : i16) -> Self {
-        return Self { 
-            event_type : EventInfoType::RouterState,
-            timestamp : Instant::now(),
-            name: String::new(),
-            value: VariantValue::from(state)
-        };
-    }    
-
-}
 
 
 
@@ -424,7 +367,7 @@ impl AdsClient {
         // Create communication channels.
         //
 
-        let (tx, rx): (Sender<DataChangeEventInfo>, Receiver<DataChangeEventInfo>) 
+        let (tx, rx): (Sender<RouterNotificationEventInfo>, Receiver<RouterNotificationEventInfo>) 
             = mpsc::channel();
 
         let mut global_sender = SYMBOL_MANAGER.sender.lock().unwrap();
@@ -653,7 +596,7 @@ impl AdsClient {
 
 
     /// Unregister the callback from the ADS router. Should be called during finalize
-    /// to avoid bogging down the ADS Router.
+    /// to avoid bogging down the ADS Router. 
     fn unregister_state_notification(&mut self) {
 
         if self.ads_state_notification_handle == 0 {
@@ -686,6 +629,7 @@ impl AdsClient {
 
     /// Register to receive state notifications from the ADS Router, which is our pipeline to the
     /// targets.
+    /// Note that notifications will only come when the 
     fn register_ads_router_notification(&self) {
         unsafe {
             let router_state_err = AdsAmsRegisterRouterNotification(Some(ads_router_callback));
@@ -695,6 +639,7 @@ impl AdsClient {
             }            
             else {
                 log::error!("Registered ADS Router notification callback successfully.");
+                
             }            
         }
         
@@ -1293,10 +1238,10 @@ impl AdsClient {
         while let Some(item) = get_last_registered_symbol() {
 
             if let Err(err) = self.unregister_symbol(&item.name) {
-                error!("Failed to unregister symbol {}", item.name);
+                log::error!("Failed to unregister symbol {} : {}", item.name, err);
             }
             else {
-                info!("Unregistered symbol {}", item.name);
+                log::info!("Unregistered symbol {}", item.name);
             }    
             
         }
@@ -1395,15 +1340,9 @@ unsafe fn handle_ads_value_callback(
     hUser: ::std::os::raw::c_ulong
 ) {
 
-    log::info!("Notification for notification handle {} data size {} received for hUser instance {} ", 
-        {(*pNotification).hNotification},
-        (*pNotification).cbSampleSize as usize,
-        hUser
-    );
-
     let id = hUser as u32;
 
-    if let Ok(symbol) = get_registered_symbol_by_handle(id) {
+    if let Ok(_) = get_registered_symbol_by_handle(id) {
 
         // Assuming `cbSampleSize` gives the size of the data in bytes
         let data_size = (*pNotification).cbSampleSize as usize;
@@ -1416,14 +1355,14 @@ unsafe fn handle_ads_value_callback(
 
         for i in 0 .. global_sender.len() {
 
-            let dcei = DataChangeEventInfo {
+            let dcei = RouterNotificationEventInfo {
                 event_type : EventInfoType::DataChange,
                 id : id,
                 data : Vec::from(data_slice)
             };
 
             if let Err(err) = global_sender[i].send(dcei) {
-                error!("Failed to send on CHANNEL for DATA CHANGE: {}", err);
+                log::error!("Failed to send on notification channel for DATA CHANGE: {}", err);
             }
                 
         }
@@ -1499,21 +1438,10 @@ unsafe fn handle_ads_state_callback(
     let data_slice = slice::from_raw_parts((*pNotification).data.as_ptr(), data_size);    
 
     if let Some(state ) = i16::read_from(data_slice) {
-        match state as i32{
-            nAdsState_ADSSTATE_RUN => {
-                log::info!("PLC has transitioned to RUN.");
-            },
-            nAdsState_ADSSTATE_STOP => {
-                log::info!("PLC has transitioned to STOP.");
-            },
-            _ => {
-                log::info!("Received unknown state code {} from target.", state);
-            }
-        }
 
         for i in 0 .. global_sender.len() {
 
-            let dcei = DataChangeEventInfo {
+            let dcei = RouterNotificationEventInfo {
                 event_type : EventInfoType::AdsState,
                 id : id,
                 data : state.to_le_bytes().to_vec()
@@ -1565,30 +1493,18 @@ unsafe extern "C" fn ads_router_callback(
 
 
 
+/// Handles the callback from the ADS router that it has changed state.
+/// Note that the callback will only be issued when the state changes, and there
+/// will be no initial callback when the connection is made, unlike other notifications.
 unsafe fn handle_ads_router_callback(
     state: ::std::os::raw::c_long
 ) {
     
     let global_sender = SYMBOL_MANAGER.sender.lock().unwrap();
-
-    match state as i32{
-        nAmsRouterEvent_AMSEVENT_ROUTERSTART => {
-            log::info!("The ADS Router is started and running.");
-        },
-        nAmsRouterEvent_AMSEVENT_ROUTERSTOP => {
-            log::info!("The ADS Router is stopped.");
-        },
-        nAmsRouterEvent_AMSEVENT_ROUTERREMOVED => {
-            log::info!("The ADS Router has been removed.");
-        },
-        _ => {
-            log::info!("Received unknown ADS Router state code {}", state);
-        }
-    }
     
     for i in 0 .. global_sender.len() {
 
-        let dcei = DataChangeEventInfo {
+        let dcei = RouterNotificationEventInfo {
             event_type : EventInfoType::RouterState,
             id : 32767, // BROADCAST
             data : state.to_le_bytes().to_vec()
@@ -1658,8 +1574,6 @@ pub fn to_ams_addr(s :&str) -> Option<AmsAddr> {
     let mut ret = AmsAddr::new();
 
     for i in 0..6 {
-
-        log::debug!("parsing token {}: {}", i, tokens[i]);
 
         match u8::from_str(tokens[i]) {
             Ok(b) => ret.netId.b[i] = b,

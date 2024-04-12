@@ -134,6 +134,8 @@ To build a 32-bit version:
 
 # Demo
 
+For a more complete example, see src/bin/commtest.rs.
+
 
 Using the recommended client library, including channels for notifications.
 

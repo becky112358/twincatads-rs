@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:17:55
 // -----
-// Last Modified: 2024-04-11 16:37:13
+// Last Modified: 2024-04-12 08:13:28
 // -----
 // 
 //
@@ -13,23 +13,33 @@
 
 use std::fmt;
 use zerocopy_derive::{AsBytes, FromBytes, FromZeroes};
-
+use std::time::Instant;
 use super::ads_data::AdsDataTypeId;
+use mechutil::variant::VariantValue;
 
 
-/// Enumbers the type of event that is being transmitted.
+/// Enumerates the type of event that is being transmitted.
 #[derive(Debug, Clone)]
 pub enum EventInfoType {
     Invalid = 0,
+    /// The value of a symbol in the target device has changed. 
+    /// When a symbol is initially registered for on data change notification, an initial notification of its
+    /// current value will be broadcast.
     DataChange = 1,
+    /// The state of the target device has changed. This is generally a PLC, and indicates whether
+    /// the PLC is in RUN or STOP. When a target is connected, and= initial notification of its
+    /// current state will be broadcast.
     AdsState = 2,
+    /// The state of the ADS Router has changed. The ADS Router is the pipeline to the targets.
+    /// Note that Router callbacks will only be issued when the Router state changes, and there
+    /// will be no initial callback when the connection is made, unlike other notification types.
     RouterState = 3
 }
 
-/// Stores the event details from an on Data change notification from
+/// Stores the event details from a notification from
 /// the ADS router. This structure is passed via a channel from the 
 /// ADS Router thread context into the thread context of the AdsClient.
-pub struct DataChangeEventInfo {
+pub struct RouterNotificationEventInfo {
 
     /// The type of event that is being transmitted.
     pub event_type : EventInfoType,
@@ -41,6 +51,60 @@ pub struct DataChangeEventInfo {
 }
 
 
+/// Notification data for a registered symbol data change event.
+#[derive(Debug, Clone)]
+pub struct AdsClientNotification {    
+    /// The type of event that is being transmitted.
+    pub event_type : EventInfoType,
+    /// Monotonic tick representing when the notification was received.
+    pub timestamp: Instant,
+    /// Name of the symbol or tag for which this value was received
+    /// if event_info is DataChange. Not used for other types.
+    pub name : String,
+    /// The value received
+    pub value : VariantValue
+}
+
+impl AdsClientNotification {
+
+    /// Construct a new DataChangeNotification with the current timestamp.
+    pub fn new() -> Self {
+        return Self { 
+            event_type : EventInfoType::Invalid,
+            timestamp : Instant::now(),
+            name: String::new(),
+            value: VariantValue::Null
+        };
+    }
+
+    pub fn new_datachange(name : &str, val : &VariantValue) -> Self {
+        return Self { 
+            event_type : EventInfoType::DataChange,
+            timestamp : Instant::now(),
+            name: name.to_string(),
+            value: val.clone()
+        };
+    }    
+
+    pub fn new_ads_state(state : i16) -> Self {
+        return Self { 
+            event_type : EventInfoType::AdsState,
+            timestamp : Instant::now(),
+            name: String::new(),
+            value: VariantValue::from(state)
+        };
+    }    
+
+    pub fn new_router_state(state : i16) -> Self {
+        return Self { 
+            event_type : EventInfoType::RouterState,
+            timestamp : Instant::now(),
+            name: String::new(),
+            value: VariantValue::from(state)
+        };
+    }    
+
+}
 
 /// Properties of a symbol that has been successfully registered for 
 /// on-change notification.
@@ -56,6 +120,8 @@ pub struct RegisteredSymbol {
 
 /// A public type for fixed-length strings in the PLC. Represents
 /// T_MaxString, which is an array of 255 character bytes.
+/// Does not work for strings in the PLC that are defined with a
+/// shorter length.
 #[repr(C)]
 #[derive(FromBytes, FromZeroes, AsBytes, Debug, Clone, Copy)]
 pub struct MaxString([u8;256]);
@@ -100,4 +166,136 @@ impl MaxString {
         array[..bytes.len()].copy_from_slice(bytes);
         MaxString(array)
     }    
+}
+
+
+
+/// Defines the ADS state of a target device. Generally, this means
+/// whether or not the PLC is in RUN or STOPPED.
+/// ```ignore
+/// match AdsState::from(notification.value) {
+///     AdsState::Started => log::info!("Target device is RUNNING."),
+///     AdsState::Stopped => log::info!("Target device is STOPPED.")
+///     AdsState::Unknown => log::info!("Target device is in an unknown state.")
+/// }
+/// ```
+pub enum AdsState {
+    /// No information is known about the target device
+    Unknown = -1,
+    /// The target device is in Run Mode
+    Running = 5,
+    /// The target device is stopped.
+    Stopped = 6,
+}
+
+impl From<i16> for AdsState {
+    fn from(value: i16) -> Self {
+        match value {
+            5 => AdsState::Running,
+            6 => AdsState::Stopped,
+            _ => AdsState::Unknown,
+        }
+    }
+}
+
+
+impl From<VariantValue> for AdsState {
+    fn from(value: VariantValue) -> Self {
+        match value {
+            VariantValue::Int32(v) => match v {
+                5 => AdsState::Running,
+                6 => AdsState::Stopped,
+                _ => AdsState::Unknown,
+            },            
+            VariantValue::Int16(v) => match v {
+                5 => AdsState::Running,
+                6 => AdsState::Stopped,
+                _ => AdsState::Unknown,
+            },
+            VariantValue::Byte(v) => match v as i16 {
+                5 => AdsState::Running,
+                6 => AdsState::Stopped,
+                _ => AdsState::Unknown,
+            },
+            VariantValue::SByte(v) => match v as i16 {
+                5 => AdsState::Running,
+                6 => AdsState::Stopped,
+                _ => AdsState::Unknown,
+            },
+            // Potentially include other conversions if reasonable
+            _ => AdsState::Unknown, // Fallback for all other types
+        }
+    }
+}
+
+
+
+/// Defines the state of the ADS Router. 
+/// Use this enumeration to easily convert notifications from the client.
+/// 
+/// Note that Router callbacks will only be issued when the Router state changes, and there
+/// will be no initial callback when the connection is made, unlike other notification types.
+/// 
+/// ```ignore
+/// match RouterState::from(notification.value) {
+///     RouterState::Started => log::info!("Router is RUNNING"),
+///     RouterState::Stopped => log::info!("Router is STOPPED"),
+///     RouterState::Removed => log::info!("Router has been removed!"),
+///     RouterState::Unknown => log::info!("Router is in an unknown state."),
+/// }
+/// ```
+pub enum RouterState {
+    /// No information is known about the target device
+    Unknown = -1,
+    /// The router stopped.
+    Stopped = 0,    
+    /// The router started.
+    Started = 1,
+    /// The router has been removed.
+    Removed = 2
+
+}
+
+impl From<i16> for RouterState {
+    fn from(value: i16) -> Self {
+        match value {
+            1 => RouterState::Started,
+            0 => RouterState::Stopped,
+            2 => RouterState::Removed,
+            _ => RouterState::Unknown,
+        }
+    }
+}
+
+impl From<VariantValue> for RouterState {
+    fn from(value: VariantValue) -> Self {
+        match value {
+            VariantValue::Int32(v) => match v {
+                1 => RouterState::Started,
+                0 => RouterState::Stopped,
+                2 => RouterState::Removed,
+                _ => RouterState::Unknown,
+            },            
+            VariantValue::Int16(v) => match v {
+                1 => RouterState::Started,
+                0 => RouterState::Stopped,
+                2 => RouterState::Removed,
+                _ => RouterState::Unknown,
+            },
+            VariantValue::Byte(v) => match v as i16 {
+                1 => RouterState::Started,
+                0 => RouterState::Stopped,
+                2 => RouterState::Removed,
+                _ => RouterState::Unknown,
+            },
+            VariantValue::SByte(v) => match v as i16 {
+                1 => RouterState::Started,
+                0 => RouterState::Stopped,
+                2 => RouterState::Removed,
+                _ => RouterState::Unknown,
+            },
+            // Potentially include other conversions if reasonable
+            _ => RouterState::Unknown, // Fallback for all other types
+        }
+    }
 }
