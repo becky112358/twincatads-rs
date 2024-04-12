@@ -217,7 +217,6 @@ pub enum AdsSymbolNode {
 fn parse_datatype_entry_field(item : &AdsDatatypeEntry, buffer: &Box<[u8]>, offset : usize ) -> Option<AdsSymbolInfo> {
 
     let datatype_entry_len : usize = std::mem::size_of::<AdsDatatypeEntry>().try_into().unwrap();
-    let symbol_entry_len : usize = std::mem::size_of::<AdsSymbolEntry>().try_into().unwrap();
 
     if offset >= (buffer.len() + datatype_entry_len) {
         return None;
@@ -288,13 +287,9 @@ fn parse_datatype_entry_item(item : &AdsDatatypeEntry, buffer: &Box<[u8]>, offse
 
     let comment_len = item.commentLength;
     let name_start = offset + datatype_entry_len;
-    let name_len = item.nameLength as usize;
     let name_end = name_start + item.nameLength as usize;
 
     if let Ok(nm) = String::from_utf8(buffer[name_start ..name_end].to_vec()) {
-
-        let array_len = item.arrayDim;
-        let sub_items = item.subItems;
     
         let mut ret = AdsDataTypeInfo {
             name: nm.clone(),
@@ -361,7 +356,7 @@ fn parse_datatype_entry_item(item : &AdsDatatypeEntry, buffer: &Box<[u8]>, offse
                 comment_end + 1 + (ret.num_array_dimensions as usize * array_info_len as usize);
 
             let mut field_item_offset = field_info_offset;
-            for i in 0 .. ret.num_fields {              
+            for _i in 0 .. ret.num_fields {              
 
                 //log::info!("\tProcessing field item: {} of {}", i, ret.num_fields);
 
@@ -395,13 +390,10 @@ fn parse_datatypes( buffer: &Box<[u8]>) -> BTreeMap<String, AdsDataTypeInfo> {
     let mut offset = 0;
     let datatype_entry_len : usize = std::mem::size_of::<AdsDatatypeEntry>().try_into().unwrap();
 
-    let mut num_data_types = 0;
-
     while offset < buffer.len() && buffer[offset] != 0 {        
 
         if let Some(inc) = u32::read_from(&buffer[offset..offset + 4]) {
             
-            num_data_types += 1;        
             let item:&AdsDatatypeEntry = unsafe{ &*buffer[offset..offset + datatype_entry_len].as_ptr().cast() };
 
             if let Some(entry) = parse_datatype_entry_item(&item, buffer, offset ) {                
@@ -456,8 +448,8 @@ fn set_symbol_array_length(symbol_info : &mut AdsSymbolInfo) {
         return;
     }
 
-    let mut start = 0;
-    let mut end = 0;
+    let start ;
+    let end;
 
     if let Some(index) = symbol_info.type_name.find("[") {
         start = index + 1;

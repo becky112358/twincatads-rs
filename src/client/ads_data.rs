@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:11:58
 // -----
-// Last Modified: 2024-04-11 14:34:54
+// Last Modified: 2024-04-12 08:51:12
 // -----
 // 
 //
@@ -10,7 +10,7 @@
 use indexmap::IndexMap;
 use mechutil::variant::VariantValue;
 use zerocopy::{AsBytes, FromBytes};
-use anyhow::{anyhow, Error};
+use anyhow::anyhow;
 use std::convert::TryFrom;
 
 use super::ads_symbol_loader::{AdsSymbolCollection, AdsSymbolInfo};

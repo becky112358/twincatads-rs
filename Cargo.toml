@@ -5,8 +5,8 @@ edition = "2021"
 authors = ["Thomas C. Bitsky Jr. <noreply@automateddesign.com>"]
 license = "MIT"
 homepage = "https://automateddesign.com"
-repository = "https://github.com/rhythmchicago/twincatads-rs"
-documentation = "https://github.com/rhythmchicago/twincatads-rs"
+repository = "https://adc360.visualstudio.com/adc-public/_git/twincatads-rs"
+documentation = "https://adc360.visualstudio.com/adc-public/_git/twincatads-rs"
 description = "Rust wrapper for TwinCAT ADS library provided with Beckhoff TwinCAT."
 
 

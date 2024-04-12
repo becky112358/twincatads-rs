@@ -15,12 +15,11 @@
 
 use std::collections::HashMap;
 use std::thread::JoinHandle;
-use std::time::Instant;
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::{mpsc, Arc};
 use std::{thread, time};
 use std::slice;
-use std::os::raw::{self, c_void}; // c_void, etc
+use std::os::raw::c_void; // c_void, etc
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use log::{error, info};
@@ -54,13 +53,8 @@ use crate::ADSIGRP_SYM_VALBYHND;
 use crate::AdsNotificationAttrib__bindgen_ty_1;
 use crate::nAdsTransMode_ADSTRANS_SERVERONCHA;
 use crate::AdsNotificationAttrib;
-use crate::nAdsState_ADSSTATE_RUN;
-use crate::nAdsState_ADSSTATE_STOP;
 use crate::ADSIGRP_DEVICE_DATA;
 use crate::ADSIOFFS_DEVDATA_ADSSTATE;
-use crate::nAmsRouterEvent_AMSEVENT_ROUTERSTOP;
-use crate::nAmsRouterEvent_AMSEVENT_ROUTERSTART;
-use crate::nAmsRouterEvent_AMSEVENT_ROUTERREMOVED;
 
 use super::ads_symbol_loader::{AdsSymbolCollection, AdsSymbolInfo};
 use super::client_types::{

@@ -1,8 +1,8 @@
 //
-// Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
+// Copyright (C) 2024 Automated Design Corp. All Rights Reserved.
 // Created Date: 2024-04-06 10:24:11
 // -----
-// Last Modified: 2024-04-12 07:14:31
+// Last Modified: 2024-04-12 09:07:52
 // -----
 // 
 //
@@ -15,8 +15,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::{thread, time};
-use anyhow::{anyhow, Error};
-use log::{info, error, debug};
+use log::{info, error};
 use mechutil::variant::VariantValue;
 use simplelog::*;
 
