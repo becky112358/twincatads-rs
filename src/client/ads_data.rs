@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:11:58
 // -----
-// Last Modified: 2024-04-12 08:51:12
+// Last Modified: 2024-04-18 08:31:36
 // -----
 // 
 //
@@ -12,13 +12,14 @@ use mechutil::variant::VariantValue;
 use zerocopy::{AsBytes, FromBytes};
 use anyhow::anyhow;
 use std::convert::TryFrom;
+use serde::{Serialize, Deserialize};
 
 use super::ads_symbol_loader::{AdsSymbolCollection, AdsSymbolInfo};
 
 
 #[allow(dead_code)]
 #[repr(u32)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AdsDataTypeId 
 {
 

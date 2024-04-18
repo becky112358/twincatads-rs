@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:17:55
 // -----
-// Last Modified: 2024-04-12 08:13:28
+// Last Modified: 2024-04-18 08:32:47
 // -----
 // 
 //
@@ -12,14 +12,21 @@
 
 
 use std::fmt;
+use serde::{Serialize, Deserialize, Serializer, Deserializer, de::Visitor};
 use zerocopy_derive::{AsBytes, FromBytes, FromZeroes};
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime};
 use super::ads_data::AdsDataTypeId;
 use mechutil::variant::VariantValue;
 
 
+lazy_static!{
+    /// A static reference Instant, initialized at application start.
+    static ref REFERENCE_INSTANT: Instant = Instant::now();
+}
+
+
 /// Enumerates the type of event that is being transmitted.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EventInfoType {
     Invalid = 0,
     /// The value of a symbol in the target device has changed. 
@@ -39,6 +46,7 @@ pub enum EventInfoType {
 /// Stores the event details from a notification from
 /// the ADS router. This structure is passed via a channel from the 
 /// ADS Router thread context into the thread context of the AdsClient.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouterNotificationEventInfo {
 
     /// The type of event that is being transmitted.
@@ -50,13 +58,54 @@ pub struct RouterNotificationEventInfo {
     
 }
 
+/// Serialize `Instant` as a Unix timestamp in milliseconds
+fn serialize_instant<S>(instant: &Instant, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let duration_since_epoch = instant.duration_since(*REFERENCE_INSTANT);
+    let timestamp_in_ms = duration_since_epoch.as_millis();
+    serializer.serialize_u64(timestamp_in_ms as u64)
+}
+
+/// Deserialize `Instant` from a Unix timestamp in milliseconds
+fn deserialize_instant<'de, D>(deserializer: D) -> Result<Instant, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct InstantVisitor;
+
+    impl<'de> Visitor<'de> for InstantVisitor {
+        type Value = Instant;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a UNIX timestamp in milliseconds")
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            let since_epoch = Duration::from_millis(value);
+            SystemTime::UNIX_EPOCH
+                .checked_add(since_epoch)
+                .and_then(|time| time.duration_since(SystemTime::now()).ok())
+                .map(|duration| Instant::now() + duration)
+                .ok_or_else(|| E::custom("invalid timestamp"))
+        }
+    }
+
+    deserializer.deserialize_u64(InstantVisitor)
+}
+
 
 /// Notification data for a registered symbol data change event.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdsClientNotification {    
     /// The type of event that is being transmitted.
     pub event_type : EventInfoType,
     /// Monotonic tick representing when the notification was received.
+    #[serde(serialize_with = "serialize_instant", deserialize_with = "deserialize_instant")]
     pub timestamp: Instant,
     /// Name of the symbol or tag for which this value was received
     /// if event_info is DataChange. Not used for other types.
@@ -108,7 +157,7 @@ impl AdsClientNotification {
 
 /// Properties of a symbol that has been successfully registered for 
 /// on-change notification.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisteredSymbol {
     pub handle : u32,
     pub notification_handle : u32,
@@ -179,6 +228,7 @@ impl MaxString {
 ///     AdsState::Unknown => log::info!("Target device is in an unknown state.")
 /// }
 /// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AdsState {
     /// No information is known about the target device
     Unknown = -1,
@@ -244,6 +294,7 @@ impl From<VariantValue> for AdsState {
 ///     RouterState::Unknown => log::info!("Router is in an unknown state."),
 /// }
 /// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RouterState {
     /// No information is known about the target device
     Unknown = -1,

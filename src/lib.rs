@@ -13,6 +13,10 @@ include!(concat!(env!("OUT_DIR"), "/bindings_32.rs"));
 #[cfg(target_arch = "x86_64")]
 include!(concat!(env!("OUT_DIR"), "/bindings_64.rs"));
 
+
+#[macro_use]
+extern crate lazy_static;
+
 // Pull in adcs client module.
 pub mod client;
 
