@@ -1,8 +1,9 @@
 # twincatads-rs
 
 A rust wrapper for the TwinCAT ADS library provided by Beckhoff. Includes a convenient client class that makes connecting to a target trivial.
-Uploads symbol and data type information from the target to easily read and write structures and arrays. Channels are used for safe, cross-thread
-communication.
+Uploads symbol and data type information from the target to easily read and write structures and arrays. With 0.3.2, we switched to Tokio channels for safe, asynchronous communication and easy integration into other projects.
+
+See src/bin/commtest.rs for a complete usage example.
 
 ## Description
 

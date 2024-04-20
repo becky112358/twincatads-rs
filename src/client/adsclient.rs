@@ -14,13 +14,12 @@
 
 
 use std::collections::HashMap;
-use std::thread::JoinHandle;
-use std::sync::mpsc::{Sender, Receiver};
-use std::sync::{mpsc, Arc};
-use std::{thread, time};
+use tokio::task::JoinHandle;
+use tokio::sync::mpsc::{self, Sender, Receiver};
+use std::time;
 use std::slice;
 use std::os::raw::c_void; // c_void, etc
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use log::{error, info};
 use std::str::FromStr;
@@ -287,7 +286,7 @@ impl AdsClient {
     /// Constructor
     pub fn new() -> (Self, mpsc::Receiver<AdsClientNotification>) {
 
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel(100);
 
         let client = AdsClient { 
             id : get_new_id(),
@@ -354,6 +353,12 @@ impl AdsClient {
         }
 
         unsafe {
+            
+            // Open a legacy function port, which is used by the router notification command.
+            // Most of the other command use the multi-threaded version of the commands
+            crate::AdsPortOpen();
+
+
             self.current_comms_port = AdsPortOpenEx();
         }
 
@@ -361,8 +366,8 @@ impl AdsClient {
         // Create communication channels.
         //
 
-        let (tx, rx): (Sender<RouterNotificationEventInfo>, Receiver<RouterNotificationEventInfo>) 
-            = mpsc::channel();
+        let (tx, mut rx): (Sender<RouterNotificationEventInfo>, Receiver<RouterNotificationEventInfo>) 
+            = mpsc::channel(100);
 
         let mut global_sender = SYMBOL_MANAGER.sender.lock().unwrap();
         global_sender.push(tx);
@@ -378,7 +383,7 @@ impl AdsClient {
         let shutdown_signal_clone = self.shutdown_signal.clone();
         let symbol_collection = self.symbol_collection.clone();
 
-        let child = thread::spawn(move || {
+        let child = tokio::task::spawn(async move {
 
             let ten_millis = time::Duration::from_millis(10);
             let timeout = time::Duration::from_secs(1); // Set your desired timeout
@@ -392,108 +397,116 @@ impl AdsClient {
                     break; 
                 }                
 
-                match rx.recv_timeout(timeout) {
+                let result = {
+                    
+                    tokio::time::timeout(timeout, rx.recv()).await
+                };
 
-                    Ok(info) => {
-                        match info.event_type {
-                            EventInfoType::DataChange => {
-                                if let Ok(symbol) = get_registered_symbol_by_handle(info.id) {
 
-                                    // log::debug!("CHANNEL DATA NOTIFICATION: {} event received for symbol: {}", 
-                                    //     info.id,
-                                    //     symbol.name
-                                    // );
+                match result  { 
 
-                                    if let Some(symbol_info) = symbol_collection.symbols.get(&symbol.name) {
-                                        match ads_data::deserialize(
-                                            &symbol_collection,
-                                            symbol_info,
-                                            &info.data, 
-                                            &symbol.data_type_id
-                                        ) {
-                                            Some(var) => {
-            
-                                                let notification = AdsClientNotification::new_datachange(&symbol.name, &var);
-                                                
-                                                if let Err(err) = notification_tx.send(notification) {
-                                                    error!("Failed to send notification on {} to parent with error: {}", 
-                                                        symbol.name, 
-                                                        err
-                                                    );
+                    Ok(opt) => {
+                        match opt {
+                            Some(info) => {
+                                match info.event_type {
+                                    EventInfoType::DataChange => {
+                                        if let Ok(symbol) = get_registered_symbol_by_handle(info.id) {
+
+                                            // log::debug!("CHANNEL DATA NOTIFICATION: {} event received for symbol: {}", 
+                                            //     info.id,
+                                            //     symbol.name
+                                            // );
+
+                                            if let Some(symbol_info) = symbol_collection.symbols.get(&symbol.name) {
+                                                match ads_data::deserialize(
+                                                    &symbol_collection,
+                                                    symbol_info,
+                                                    &info.data, 
+                                                    &symbol.data_type_id
+                                                ) {
+                                                    Some(var) => {
+                    
+                                                        let notification = AdsClientNotification::new_datachange(&symbol.name, &var);
+                                                        
+                                                        if let Err(err) = notification_tx.send(notification).await {
+                                                            error!("Failed to send notification on {} to parent with error: {}", 
+                                                                symbol.name, 
+                                                                err
+                                                            );
+                                                        }
+                    
+                                                    },
+                                                    None => {
+                                                        log::error!("Failed to create Variant for notification on symbol {}", symbol.name);
+                                                    }
                                                 }
-            
-                                            },
-                                            None => {
-                                                log::error!("Failed to create Variant for notification on symbol {}", symbol.name);
+                    
                                             }
+                                            else {
+                                                log::error!("Failed to locate symbol name {} in uploaded symbol table.", symbol.name);
+                                            }
+
+                                            
                                         }
-            
+                                        else {
+                                            log::error!("Channel data notification received for unknown error.");
+                                        }            
                                     }
-                                    else {
-                                        log::error!("Failed to locate symbol name {} in uploaded symbol table.", symbol.name);
-                                    }
+                                    EventInfoType::Invalid => {
+                                        log::warn!("Invalid notification received. Ignoring.");
+                                    },
+                                    EventInfoType::AdsState => {
+                                        if let Some(state ) = i16::read_from(&info.data) {
 
-                                    
+                                            let notification = AdsClientNotification::new_ads_state(state);
+                                                        
+                                            if let Err(err) = notification_tx.send(notification).await {
+                                                error!("Failed to send ads state notification to parent with error: {}", 
+                                                    err
+                                                );
+                                            }                                    
+
+                                            log::info!("PLC state is now: {}", state);
+                                        }
+                                        else {
+                                            log::error!("Failed to extract PLC state from notification.");
+                                        }
+                                        
+                                    },
+                                    EventInfoType::RouterState => {
+                                        if let Some(state ) = i16::read_from(&info.data) {
+
+                                            let notification = AdsClientNotification::new_router_state(state);
+                                                        
+                                            if let Err(err) = notification_tx.send(notification).await {
+                                                error!("Failed to send router state notification to parent with error: {}", 
+                                                    err
+                                                );
+                                            }                                    
+
+                                            log::info!("ADS Router is now: {}", state);
+                                        }
+                                        else {
+                                            log::error!("Failed to extract PLC state from notification.");
+                                        }
+                                    },
                                 }
-                                else {
-                                    log::error!("Channel data notification received for unknown error.");
-                                }            
+                                let _ = tokio::time::sleep(ten_millis).await;          
+                            },
+                            None => {
+                                info!("Notification Sender has disconnected or faulted. No more notifications will be received.");
+                                break;    
                             }
-                            EventInfoType::Invalid => {
-                                log::warn!("Invalid notification received. Ignoring.");
-                            },
-                            EventInfoType::AdsState => {
-                                if let Some(state ) = i16::read_from(&info.data) {
 
-                                    let notification = AdsClientNotification::new_ads_state(state);
-                                                
-                                    if let Err(err) = notification_tx.send(notification) {
-                                        error!("Failed to send ads state notification to parent with error: {}", 
-                                            err
-                                        );
-                                    }                                    
-
-                                    log::info!("PLC state is now: {}", state);
-                                }
-                                else {
-                                    log::error!("Failed to extract PLC state from notification.");
-                                }
-                                
-                            },
-                            EventInfoType::RouterState => {
-                                if let Some(state ) = i16::read_from(&info.data) {
-
-                                    let notification = AdsClientNotification::new_router_state(state);
-                                                
-                                    if let Err(err) = notification_tx.send(notification) {
-                                        error!("Failed to send router state notification to parent with error: {}", 
-                                            err
-                                        );
-                                    }                                    
-
-                                    log::info!("ADS Router is now: {}", state);
-                                }
-                                else {
-                                    log::error!("Failed to extract PLC state from notification.");
-                                }
-                            },
-                        }
-                        thread::sleep(ten_millis);          
+                        };
 
                     },
-                    Err(mpsc::RecvTimeoutError::Timeout) => {
-                        // Timeout reached without receiving any data
-                        // Do nothing. This is expected behavior.
-                    },
-                    Err(mpsc::RecvTimeoutError::Disconnected) => {
-                        // The sending half of the channel has disconnected. This shouldn't happen.
-                        // Clean up and exit the loop
-                        info!("Notification Sender has disconnected. No more notifications will be received.");
-                        break;
-                    }                    
-                }            
-
-            }
+                    Err(_) => {
+                        // Timeout. Simply loop up.
+                        let _ = tokio::time::sleep(ten_millis).await;
+                    }
+                }
+            }            
 
         });
 
@@ -511,7 +524,7 @@ impl AdsClient {
     /// Complete the shutdown and closing the port to the
     /// ads router. This should be done last, after all 
     /// connections are cleaned up and closed.
-    pub fn finalize(&mut self) {
+    pub async fn finalize(&mut self) {
 
         self.unregister_ads_router_notification();
         self.unregister_state_notification();
@@ -520,7 +533,13 @@ impl AdsClient {
         info!("AdsClient closing connection to ADS Router...");
         if self.current_comms_port != 0 {
             unsafe {
+
+                // Close the Ex function port.
                 AdsPortCloseEx(self.current_comms_port);
+
+                // Close the legacy function port.
+                crate::AdsPortClose();
+
             }
             self.current_comms_port = 0;
         }        
@@ -529,7 +548,7 @@ impl AdsClient {
         self.shutdown_signal.store(true, Ordering::SeqCst);
         if let Some(jh) = self.notification_join_handle.take() {
 
-            match jh.join() {
+            match jh.await {
                 Ok(_) => info!("AdsClient notification thread closed cleanly."),
                 Err(err) => error!("Failed to gracefully shut down notification thread: {:?}", err),
             }
@@ -578,7 +597,7 @@ impl AdsClient {
                 log::error!("Failed to register ADS State notification callbacks: {}", state_noti_err);
             }            
             else {
-                log::error!("Registered ADS State notification callback successfully.");
+                log::info!("Registered ADS State notification callback successfully.");
             }
 
 
@@ -609,10 +628,10 @@ impl AdsClient {
             );
 
             if state_noti_err != 0 {
-                log::error!("Failed to register ADS State notification callbacks: {}", state_noti_err);
+                log::error!("Failed to remove ADS State notification callbacks: {}", state_noti_err);
             }            
             else {
-                log::error!("Registered ADS State notification callback successfully.");
+                log::info!("Removed ADS State notification callback successfully.");
             }
 
 
@@ -632,7 +651,7 @@ impl AdsClient {
                 log::error!("Failed to register ADS Router notification callbacks: {}", router_state_err);
             }            
             else {
-                log::error!("Registered ADS Router notification callback successfully.");
+                log::info!("Registered ADS Router notification callback successfully.");
                 
             }            
         }
@@ -647,10 +666,10 @@ impl AdsClient {
             let err = AdsAmsUnRegisterRouterNotification();
 
             if err != 0 {
-                log::error!("Failed to register ADS Router notification callbacks: {}", err);
+                log::error!("Failed to remove ADS Router notification callbacks: {}", err);
             }            
             else {
-                log::error!("Registered ADS Router notification callback successfully.");
+                log::info!("Removed ADS Router notification callback successfully.");
             }                 
         }
         
@@ -1355,8 +1374,9 @@ unsafe fn handle_ads_value_callback(
                 data : Vec::from(data_slice)
             };
 
-            if let Err(err) = global_sender[i].send(dcei) {
-                log::error!("Failed to send on notification channel for DATA CHANGE: {}", err);
+            match global_sender[i].try_send(dcei) {
+                Ok(_) => {},
+                Err(err) => log::error!("Failed to send on notification channel for DATA CHANGE: {}", err),
             }
                 
         }
@@ -1441,8 +1461,9 @@ unsafe fn handle_ads_state_callback(
                 data : state.to_le_bytes().to_vec()
             };
     
-            if let Err(err) = global_sender[i].send(dcei) {
-                error!("Failed to send on CHANNEL for ADS STATE CHANGE: {}", err);
+            match global_sender[i].try_send(dcei) {
+                Ok(_) => {},
+                Err(err) => log::error!("Failed to send on CHANNEL for ADS STATE CHANGE: {}", err),
             }
                 
         }
@@ -1504,8 +1525,10 @@ unsafe fn handle_ads_router_callback(
             data : state.to_le_bytes().to_vec()
         };
 
-        if let Err(err) = global_sender[i].send(dcei) {
-            error!("Failed to send on CHANNEL for ADS ROUTER CHANGE: {}", err);
+
+        match global_sender[i].try_send(dcei) {
+            Ok(_) => {},
+            Err(err) => log::error!("Failed to send on CHANNEL for ADS ROUTER CHANGE: {}", err),
         }
             
     }
