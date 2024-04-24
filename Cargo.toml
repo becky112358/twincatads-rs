@@ -1,6 +1,6 @@
 [package]
 name = "twincatads-rs"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 authors = ["Thomas C. Bitsky Jr. <noreply@automateddesign.com>"]
 license = "MIT"

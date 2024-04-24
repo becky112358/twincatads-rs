@@ -26,6 +26,11 @@ VAR_GLOBAL
 	// Test notifications and parsing an array of structure. Updated every 1s.
 	aStructArray : ARRAY [ 0 .. 9 ] OF S_TestStruct;
 
+
+	// This variable is used as a target to test writing an INT
+	// from the client.	
+	nIntWriteTarget : REAL;
+	
 	// This variable is used as a target to test writing a REAL
 	// from the client.	
 	fRealWriteTarget : REAL;
@@ -46,6 +51,20 @@ VAR_GLOBAL
 	// This variable is used as a target to test writing an array of
 	// structure from the client.
 	aStructArrayWriteTarget : ARRAY [ 0 .. 9 ] OF S_TestStruct;
+	
+	
+	// This variable is used as a target to test writing an array
+	// from the client.
+	aArrayJsonWriteTarget : ARRAY [ 0 .. 9 ] OF REAL;
+	
+	// This variable is used as a target to test writing a structure
+	// from the client.
+	stStructJsonWriteTarget : S_TestStruct;
+	
+	
+	// This variable is used as a target to test writing an array of
+	// structure from the client.
+	aStructArrayJsonWriteTarget : ARRAY [ 0 .. 9 ] OF S_TestStruct;	
 	
 END_VAR]]></Declaration>
   </GVL>

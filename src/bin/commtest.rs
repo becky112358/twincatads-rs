@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp. All Rights Reserved.
 // Created Date: 2024-04-06 10:24:11
 // -----
-// Last Modified: 2024-04-20 08:53:19
+// Last Modified: 2024-04-23 22:00:11
 // -----
 // 
 //
@@ -54,6 +54,78 @@ async fn main() {
      
     // Make the connection to the ADS router
     client.initialize();
+
+
+    let js_bool = serde_json::json!(true);
+    if let Err(err) = client.write_symbol_json_value("GM.bBoolTarget", &js_bool) {
+        log::error!("An error occurred writing bool from json: {}", err);
+    }
+    else {
+        log::info!("Successfully wrote out JSON nbool.");
+    }
+
+    let js_number = serde_json::json!(127);
+    if let Err(err) = client.write_symbol_json_value("GM.nIntWriteTarget", &js_number) {
+        log::error!("An error occurred writing int from json: {}", err);
+    }
+    else {
+        log::info!("Successfully wrote out JSON int.");
+    }
+    
+    let js_real = serde_json::json!(9.876);
+    if let Err(err) = client.write_symbol_json_value("GM.fRealWriteTarget", &js_real) {
+        log::error!("An error occurred writing real from json: {}", err);
+    }
+    else {
+        log::info!("Successfully wrote out JSON real.");
+    }
+
+
+    let js_array = serde_json::json!(
+        [1.2,2.3,3.4,4.5,5.6,6.7,7.8,8.9,9.1,10.2]
+    );
+
+
+    if let Err(err) = client.write_symbol_json_value("GM.aArrayJsonWriteTarget", &js_array) {
+        log::error!("An error occurred writing array from json: {}", err);
+    }
+    else {
+        log::info!("Successfully wrote out JSON array.");
+    }
+
+
+    let js_struct= serde_json::json!({
+        "fReal" : 1.234,
+        "nInt" : 47,
+        "bBit" : true
+    });
+
+    if let Err(err) = client.write_symbol_json_value("GM.stStructJsonWriteTarget", &js_struct) {
+        log::error!("An error occurred writing struct from json: {}", err);
+    }
+    else {
+        log::info!("Successfully wrote out JSON struct.");
+    }
+
+    let js_struct_array= serde_json::json!([
+        {"fReal" : 10.123,"nInt" : 1,"bBit" : true},
+        {"fReal" : 9.456,"nInt" : 2,"bBit" : false},
+        {"fReal" : 8.789,"nInt" : 3,"bBit" : true},
+        {"fReal" : 7.234,"nInt" : 5,"bBit" : false},
+        {"fReal" : 6,"nInt" : 8,"bBit" : true},
+        {"fReal" : 5.567,"nInt" : 13,"bBit" : false},
+        {"fReal" : 4.890,"nInt" : 21,"bBit" : true},
+        {"fReal" : 3,"nInt" : 34,"bBit" : false},
+        {"fReal" : 2.1,"nInt" : 45,"bBit" : true},
+        {"fReal" : 1.0101,"nInt" : 79,"bBit" : false},
+    ]);
+
+    if let Err(err) = client.write_symbol_json_value("GM.aStructArrayJsonWriteTarget", &js_struct_array) {
+        log::error!("An error occurred writing array of struct from json: {}", err);
+    }
+    else {
+        log::info!("Successfully wrote out JSON array of struct.");
+    }
     
     // Write a value to a symbol in the PLC
     if let Err(err) = client.write_symbol_string_value(
@@ -147,7 +219,7 @@ async fn main() {
                 match rx_main.recv().await {   // recv_timeout(timeout) {
                     Some(notification) => {
 
-                        log::info!("Notification type {:?} received in main thread",  notification.event_type);
+                        //log::info!("Notification type {:?} received in main thread",  notification.event_type);
                         
                         match notification.event_type {
                             twincatads_rs::client::client_types::EventInfoType::Invalid => {

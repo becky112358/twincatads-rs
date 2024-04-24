@@ -14,6 +14,7 @@
 
 
 use std::collections::HashMap;
+use indexmap::IndexMap;
 use tokio::task::JoinHandle;
 use tokio::sync::mpsc::{self, Sender, Receiver};
 use std::time;
@@ -55,7 +56,7 @@ use crate::AdsNotificationAttrib;
 use crate::ADSIGRP_DEVICE_DATA;
 use crate::ADSIOFFS_DEVDATA_ADSSTATE;
 
-use super::ads_symbol_loader::{AdsSymbolCollection, AdsSymbolInfo};
+use super::ads_symbol_loader::{AdsDataTypeInfo, AdsSymbolCollection, AdsSymbolInfo};
 use super::client_types::{
     AdsClientNotification, RegisteredSymbol, RouterNotificationEventInfo
 };
@@ -1092,8 +1093,6 @@ impl AdsClient {
     /// expected to match the target symbol in the PLC exactly; this function will not convert.
     pub fn write_symbol_variant_value(&mut self, symbol_name: &str, value: &VariantValue) -> Result<(), anyhow::Error> {
 
-        
-
         if let Some(symbol_info) = self.symbol_collection.symbols.get(symbol_name) {           
 
             match serialize(&self.symbol_collection, &symbol_info, value) {
@@ -1111,6 +1110,169 @@ impl AdsClient {
             return Err(anyhow!("Failed to find information on symbol {}", symbol_name));
         }
 
+    }
+
+
+    /// Converts a JSON value to a corresponding `VariantValue` based on ADS symbol information.
+    ///
+    /// This function interprets a `serde_json::Value` according to the type and structure
+    /// described by `AdsSymbolInfo`. It supports basic data types, arrays, and nested structures
+    /// by utilizing detailed type information from a symbol collection. For arrays, it expects
+    /// the JSON value to be an array and converts each element recursively. For structured types
+    /// (`BigType`), it expects a JSON object and processes each field according to the structure's
+    /// definition. Errors are returned for type mismatches or unsupported data types.
+    ///
+    /// # Parameters
+    /// - `json_val`: The JSON value to convert.
+    /// - `symbol_info`: Metadata describing the symbol's data type and structure.
+    ///
+    /// # Returns
+    /// - `Ok(VariantValue)`: The converted value wrapped in a `VariantValue` enum.
+    /// - `Err(anyhow::Error)`: Error if the conversion fails due to type mismatches or missing information.
+    pub fn convert_json_to_variant(&self, json_val: &serde_json::Value, symbol_info: &AdsSymbolInfo) -> Result<VariantValue, anyhow::Error> {
+        if let Some(dt) = self.symbol_collection.get_fundamental_type_info(symbol_info) {
+            
+    
+            if symbol_info.is_array {
+                match json_val {
+                    serde_json::Value::Array(array) => {
+                        let mut variant_array = Vec::new();
+                        for item in array {
+                            let variant = self.convert_json_value_to_variant(item, &dt)?;
+                            variant_array.push(variant);
+                        }
+                        Ok(VariantValue::Array(variant_array))
+                    }
+                    _ => Err(anyhow::anyhow!("Expected a JSON array for array type symbol")),
+                }
+            } else {
+                if let Ok(type_id) = AdsDataTypeId::try_from(dt.data_type) {
+                    match type_id {
+                        AdsDataTypeId::Void => Err(anyhow::anyhow!("Cannot write to a void type value")),
+                        AdsDataTypeId::Int8 => json_val.as_i64().map(|x| VariantValue::SByte(x as i8)).ok_or_else(|| anyhow::anyhow!("Invalid value for Int8")),
+                        AdsDataTypeId::UInt8 => json_val.as_u64().map(|x| VariantValue::Byte(x as u8)).ok_or_else(|| anyhow::anyhow!("Invalid value for UInt8")),
+                        AdsDataTypeId::Int16 => json_val.as_i64().map(|x| VariantValue::Int16(x as i16)).ok_or_else(|| anyhow::anyhow!("Invalid value for Int16")),
+                        AdsDataTypeId::UInt16 => json_val.as_u64().map(|x| VariantValue::UInt16(x as u16)).ok_or_else(|| anyhow::anyhow!("Invalid value for UInt16")),
+                        AdsDataTypeId::Int32 => json_val.as_i64().map(|x| VariantValue::Int32(x as i32)).ok_or_else(|| anyhow::anyhow!("Invalid value for Int32")),
+                        AdsDataTypeId::UInt32 => json_val.as_u64().map(|x| VariantValue::UInt32(x as u32)).ok_or_else(|| anyhow::anyhow!("Invalid value for UInt32")),
+                        AdsDataTypeId::Int64 => json_val.as_i64().map(VariantValue::Int64).ok_or_else(|| anyhow::anyhow!("Invalid value for Int64")),
+                        AdsDataTypeId::UInt64 => json_val.as_u64().map(VariantValue::UInt64).ok_or_else(|| anyhow::anyhow!("Invalid value for UInt64")),
+                        AdsDataTypeId::Real32 => json_val.as_f64().map(|x| VariantValue::Real32(x as f32)).ok_or_else(|| anyhow::anyhow!("Invalid value for Real32")),
+                        AdsDataTypeId::Real64 => json_val.as_f64().map(VariantValue::Real64).ok_or_else(|| anyhow::anyhow!("Invalid value for Real64")),
+                        AdsDataTypeId::String | AdsDataTypeId::WString => json_val.as_str().map(|s| VariantValue::String(s.to_string())).ok_or_else(|| anyhow::anyhow!("Invalid value for String types")),
+                        AdsDataTypeId::Bit => json_val.as_bool().map(VariantValue::Bit).ok_or_else(|| anyhow::anyhow!("Invalid value for bool")),
+                        AdsDataTypeId::BigType => {
+                            if let serde_json::Value::Object(map) = json_val {
+                                let mut object = IndexMap::new();
+                                for field in &dt.fields {
+                                    let field_value = map.get(&field.name).ok_or_else(|| anyhow::anyhow!("Field '{}' missing in input JSON", field.name))?;
+                                    let field_variant = self.convert_json_to_variant(field_value, field)?;
+                                    object.insert(field.name.clone(), field_variant);
+                                }
+                                Ok(VariantValue::Object(Box::new(object)))
+                            } else {
+                                Err(anyhow::anyhow!("Expected a JSON object for structure serialization"))
+                            }
+                        },
+                        _ => Err(anyhow::anyhow!("Unsupported data type ID")),
+                    }
+
+                }
+                else {
+                    return Err(anyhow!("Unsupported data type id {}", dt.data_type));
+                }
+            }
+        } else {
+            Err(anyhow::anyhow!("Failed to retrieve fundamental type info for {}", symbol_info.name))
+        }
+    }
+
+
+    /// Converts an individual JSON value to a `VariantValue` based on specific ADS data type information.
+    ///
+    /// This helper function is a utility for converting a single JSON value to a `VariantValue`
+    /// as dictated by the ADS data type (`AdsDataTypeInfo`). It handles type conversions for basic data types,
+    /// including integers, floating points, strings, and booleans, and also manages structured types (`BigType`)
+    /// by recursive conversion of each field in a JSON object. The function is used primarily within
+    /// array processing or nested structure conversions in the main `convert_json_to_variant` function.
+    ///
+    /// # Parameters
+    /// - `json_val`: The JSON value to convert.
+    /// - `dt`: The detailed data type information used for the conversion.
+    ///
+    /// # Returns
+    /// - `Ok(VariantValue)`: The converted value wrapped in a `VariantValue` enum.
+    /// - `Err(anyhow::Error)`: Error if the conversion fails due to type mismatches or unsupported data types.
+    fn convert_json_value_to_variant(&self, json_val: &serde_json::Value, dt: &AdsDataTypeInfo) -> Result<VariantValue, anyhow::Error> {
+
+        if let Ok(type_id) = AdsDataTypeId::try_from(dt.data_type) {
+
+            match type_id{
+                AdsDataTypeId::Void => Err(anyhow::anyhow!("Cannot write to a void type value")),
+                AdsDataTypeId::Int8 => json_val.as_i64().map(|x| VariantValue::SByte(x as i8)).ok_or_else(|| anyhow::anyhow!("Invalid value for Int8")),
+                AdsDataTypeId::UInt8 => json_val.as_u64().map(|x| VariantValue::Byte(x as u8)).ok_or_else(|| anyhow::anyhow!("Invalid value for UInt8")),
+                AdsDataTypeId::Int16 => json_val.as_i64().map(|x| VariantValue::Int16(x as i16)).ok_or_else(|| anyhow::anyhow!("Invalid value for Int16")),
+                AdsDataTypeId::UInt16 => json_val.as_u64().map(|x| VariantValue::UInt16(x as u16)).ok_or_else(|| anyhow::anyhow!("Invalid value for UInt16")),
+                AdsDataTypeId::Int32 => json_val.as_i64().map(|x| VariantValue::Int32(x as i32)).ok_or_else(|| anyhow::anyhow!("Invalid value for Int32")),
+                AdsDataTypeId::UInt32 => json_val.as_u64().map(|x| VariantValue::UInt32(x as u32)).ok_or_else(|| anyhow::anyhow!("Invalid value for UInt32")),
+                AdsDataTypeId::Int64 => json_val.as_i64().map(VariantValue::Int64).ok_or_else(|| anyhow::anyhow!("Invalid value for Int64")),
+                AdsDataTypeId::UInt64 => json_val.as_u64().map(VariantValue::UInt64).ok_or_else(|| anyhow::anyhow!("Invalid value for UInt64")),
+                AdsDataTypeId::Real32 => json_val.as_f64().map(|x| VariantValue::Real32(x as f32)).ok_or_else(|| anyhow::anyhow!("Invalid value for Real32")),
+                AdsDataTypeId::Real64 => json_val.as_f64().map(VariantValue::Real64).ok_or_else(|| anyhow::anyhow!("Invalid value for Real64")),
+                AdsDataTypeId::String | AdsDataTypeId::WString => json_val.as_str().map(|s| VariantValue::String(s.to_string())).ok_or_else(|| anyhow::anyhow!("Invalid value for String types")),
+                AdsDataTypeId::Bit => json_val.as_bool().map(VariantValue::Bit).ok_or_else(|| anyhow::anyhow!("Invalid value for bool")),
+                AdsDataTypeId::BigType => {
+                    if let serde_json::Value::Object(map) = json_val {
+                        let mut object = IndexMap::new();
+                        for field in &dt.fields {
+                            let field_value = map.get(&field.name).ok_or_else(|| anyhow::anyhow!("Field '{}' missing in input JSON", field.name))?;
+                            let field_variant = self.convert_json_to_variant(field_value, field)?;
+                            object.insert(field.name.clone(), field_variant);
+                        }
+                        Ok(VariantValue::Object(Box::new(object)))
+                    } else {
+                        Err(anyhow::anyhow!("Expected a JSON object for structure serialization"))
+                    }
+                },
+                _ => Err(anyhow::anyhow!("Unsupported data type ID")),
+            }
+        }
+        else {
+            return Err(anyhow!("Unsupported data type id {}", dt.data_type));
+        }
+    }    
+
+
+    /// Writes a JSON value to a symbol in the remote ADS device.
+    ///
+    /// This function takes a symbol name and a JSON value, converts the JSON to a `VariantValue`
+    /// using `convert_json_to_variant`, and then writes it to the corresponding symbol in the remote ADS device.
+    /// The function is intended for updating values in an ADS device where the symbol information
+    /// and corresponding JSON values are known. Errors are returned if the symbol cannot be located
+    /// or if the conversion/writing process fails.
+    ///
+    /// # Parameters
+    /// - `symbol_name`: The name of the symbol to write to.
+    /// - `value`: The JSON value to write.
+    ///
+    /// # Returns
+    /// - `Ok(())`: On successful write.
+    /// - `Err(anyhow::Error)`: If there is an error in locating the symbol, converting the value, or during write.    
+    pub fn write_symbol_json_value(&mut self, symbol_name: &str, value : &serde_json::Value) -> Result<(), anyhow::Error> {
+
+        if let Some(info) = self.symbol_collection.symbols.get(symbol_name) {
+            match self.convert_json_to_variant(&value, &info) {
+                Ok(var) => {
+                    return self.write_symbol_variant_value(symbol_name, &var);
+                },
+                Err(err) => {
+                    return Err(anyhow!("Error writing symbol {} : {}", symbol_name, err));
+                },
+            }
+        }
+        else {
+            return Err(anyhow!("Failed to locate info on symbol {}", symbol_name));
+        }
     }
 
 
