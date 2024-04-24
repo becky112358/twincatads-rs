@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:11:58
 // -----
-// Last Modified: 2024-04-23 22:42:25
+// Last Modified: 2024-04-23 22:43:41
 // -----
 // 
 //
@@ -519,7 +519,6 @@ pub fn serialize(
 
         },
         VariantValue::String(str) => {
-            log::debug!("LET'S WRITE {}", str);  
             let mut ret = str.as_bytes().to_vec();
             
             // We need to ensure that the string is both not longer than
