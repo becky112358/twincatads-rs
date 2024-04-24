@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp. All Rights Reserved.
 // Created Date: 2024-04-06 10:24:11
 // -----
-// Last Modified: 2024-04-23 22:00:11
+// Last Modified: 2024-04-23 22:14:52
 // -----
 // 
 //
@@ -56,6 +56,8 @@ async fn main() {
     client.initialize();
 
 
+
+
     let js_bool = serde_json::json!(true);
     if let Err(err) = client.write_symbol_json_value("GM.bBoolTarget", &js_bool) {
         log::error!("An error occurred writing bool from json: {}", err);
@@ -79,6 +81,19 @@ async fn main() {
     else {
         log::info!("Successfully wrote out JSON real.");
     }
+
+
+    let js_string= serde_json::json!("Test some JSON!");
+    if let Err(err) = client.write_symbol_json_value("GM.sJsonTarget", &js_string) {
+        log::error!("An error occurred writing string from json: {}", err);
+    }
+    else {
+        log::info!("Successfully wrote out JSON string.");
+    }
+
+
+
+    
 
 
     let js_array = serde_json::json!(

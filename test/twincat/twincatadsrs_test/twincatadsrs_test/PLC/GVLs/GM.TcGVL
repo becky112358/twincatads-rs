@@ -44,6 +44,11 @@ VAR_GLOBAL
 	stStructWriteTarget : S_TestStruct;
 	
 
+	// This variable is used as a target to test writing a string
+	// from a JSON value in the client.
+	sJsonTarget : STRING(255);
+	
+	
 	// This variable is used as a target to test writing an array
 	// from the client.
 	aArrayWriteTarget : ARRAY [ 0 .. 9 ] OF REAL;

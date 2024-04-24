@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:11:58
 // -----
-// Last Modified: 2024-04-18 08:31:36
+// Last Modified: 2024-04-23 22:42:25
 // -----
 // 
 //
@@ -517,6 +517,16 @@ pub fn serialize(
             
             return serialize_struct(symbol_collection, symbol_info,value);
 
+        },
+        VariantValue::String(str) => {
+            log::debug!("LET'S WRITE {}", str);  
+            let mut ret = str.as_bytes().to_vec();
+            
+            // We need to ensure that the string is both not longer than
+            // the allocated space, but also wipes out any characters that might
+            // be longer than the previous string.
+            ret.resize(symbol_info.size as usize, 0);
+            return Ok(ret);
         },
         _ =>  return value.get_bytes()
     }    

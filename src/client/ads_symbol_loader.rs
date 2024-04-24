@@ -182,7 +182,30 @@ impl AdsSymbolCollection {
             }
         }
         else {
-            return self.data_types.get(&symbol_info.type_name).clone().cloned();
+            if symbol_info.type_name.contains("STRING") || symbol_info.type_name.contains("T_MaxString") {
+                return Some(AdsDataTypeInfo {
+                    name: symbol_info.name.clone(),
+                    comment: String::new(),
+                    entry_length: 0,
+                    version: 0,
+                    size: symbol_info.size,
+                    offset: symbol_info.index_offset,
+                    data_type: symbol_info.type_id,
+                    flags: 0,
+                    num_array_dimensions: 0,
+                    num_fields: 0,
+                    array_data_size: 0,
+                    array_dimensions: Vec::new(),
+                    fields: Vec::new(),
+                });
+            }
+            else {
+                return self.data_types.get(&symbol_info.type_name).clone().cloned();
+            }
+            
+            
+            
+            
         }
     }
 }
