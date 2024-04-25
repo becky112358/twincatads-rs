@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:11:58
 // -----
-// Last Modified: 2024-04-23 22:43:41
+// Last Modified: 2024-04-25 08:30:32
 // -----
 // 
 //
@@ -361,7 +361,12 @@ pub fn deserialize_value(
         AdsDataTypeId::Real80 => return None,
         AdsDataTypeId::Bit => {
             if let Some(val) = value_from_bytes::<i8>(bytes) {
-                return Some(VariantValue::from(val));
+                if val == 0 {
+                    return Some(VariantValue::from(false));
+                }
+                else {
+                    return Some(VariantValue::from(true));
+                }                
             } else {
                 return None;    
             }               
