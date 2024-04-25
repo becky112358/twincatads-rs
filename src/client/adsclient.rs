@@ -1281,6 +1281,12 @@ impl AdsClient {
     /// Returns true if successful, false if not.
     pub fn register_symbol(&mut self, symbol_name : &str) -> Result<(), anyhow::Error> {
 
+        if let Ok(_) = get_registered_symbol_by_name(symbol_name) {
+            // already registered. Do nothing.
+            log::info!("Symbol {} is already registerd.", symbol_name );
+            return Ok(())
+        }
+
         if  self.symbol_collection.symbols.contains_key(symbol_name) {
 
             let symbol = &self.symbol_collection.symbols[symbol_name];

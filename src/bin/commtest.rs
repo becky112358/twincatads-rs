@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp. All Rights Reserved.
 // Created Date: 2024-04-06 10:24:11
 // -----
-// Last Modified: 2024-04-23 22:14:52
+// Last Modified: 2024-04-25 07:06:36
 // -----
 // 
 //
@@ -45,8 +45,8 @@ async fn main() {
     
     let (mut client, mut rx) = AdsClient::new();
     // Supply AMS Address. If not set, localhost is used.
-    //client.set_address("192.168.127.1.1.1");
-    client.set_address("5.78.94.236.1.1");
+    client.set_address("192.168.127.1.1.1");
+    //client.set_address("5.78.94.236.1.1");
     
     // Supply ADS port. If not set, the default of 851 is used.
     // You should generally use the default.
@@ -191,6 +191,15 @@ async fn main() {
     }
     else {
 
+        log::info!("Testing registering a symbol a second time...");
+        if let Err(err) = client.register_symbol(NOTIFY_TAG) {
+            error!("Unexpected error when registering symbol should have been ignored: {}", err);
+        }
+        else {
+            log::info!("... second registration should have been skipped.");
+        }
+        
+
         // Second channel for sending notifications back to the main thread
         let (tx_main, mut rx_main) = mpsc::channel(100);
 
@@ -234,7 +243,7 @@ async fn main() {
                 match rx_main.recv().await {   // recv_timeout(timeout) {
                     Some(notification) => {
 
-                        //log::info!("Notification type {:?} received in main thread",  notification.event_type);
+                        log::info!("Notification type {:?} received in main thread",  notification.event_type);
                         
                         match notification.event_type {
                             twincatads_rs::client::client_types::EventInfoType::Invalid => {

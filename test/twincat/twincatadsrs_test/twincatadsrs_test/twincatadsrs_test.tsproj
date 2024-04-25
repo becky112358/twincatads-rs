@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <TcSmProject xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.beckhoff.com/schemas/2012/07/TcSmProject" TcSmVersion="1.0" TcVersion="3.1.4024.55">
-	<Project ProjectGUID="{EE6177D0-6E31-4FE9-A4C8-563A042A6A65}" TargetNetId="5.78.94.236.1.1" Target64Bit="true" ShowHideConfigurations="#x6">
+	<Project ProjectGUID="{EE6177D0-6E31-4FE9-A4C8-563A042A6A65}" TargetNetId="192.168.127.1.1.1" Target64Bit="true" ShowHideConfigurations="#x6">
 		<System>
-			<Settings MaxCpus="2" NonWinCpus="1" Packages="2">
+			<Settings MaxCpus="2">
 				<Cpu CpuId="1"/>
 			</Settings>
 			<Tasks>
@@ -13,7 +13,7 @@
 		</System>
 		<Plc>
 			<Project GUID="{8D34CDD3-38D8-4D51-BFEA-AA6A4C842298}" Name="PLC" PrjFilePath="PLC\PLC.plcproj" TmcFilePath="PLC\PLC.tmc" ReloadTmc="true" AmsPort="851" FileArchiveSettings="#x000e" SymbolicMapping="true">
-				<Instance Id="#x08502000" TcSmClass="TComPlcObjDef" KeepUnrestoredLinks="2" TmcPath="PLC\PLC.tmc" TmcHash="{C0586EAB-1222-314D-67A9-9F79CCDB6D6C}">
+				<Instance Id="#x08502000" TcSmClass="TComPlcObjDef" KeepUnrestoredLinks="2" TmcPath="PLC\PLC.tmc" TmcHash="{12BABBCC-8C42-3D42-7795-289437E57431}">
 					<Name>PLC Instance</Name>
 					<CLSID ClassFactory="TcPlc30">{08500001-0000-0000-F000-000000000064}</CLSID>
 					<Contexts>
