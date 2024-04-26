@@ -27,6 +27,8 @@ use crate::ADSIGRP_SYM_UPLOADINFO2;
 use crate::ADSIGRP_SYM_UPLOAD;
 use crate::ADSIGRP_SYM_DT_UPLOAD;
 
+use super::ads_data::AdsDataTypeId;
+
 
 
 /// Stores information about a symbol parsed out from the
@@ -97,6 +99,90 @@ pub struct AdsDataTypeInfo {
     pub fields : Vec<AdsSymbolInfo>
 
 }
+
+
+
+// fn ads_data_type_info_from_type_id_code(
+//     type_id: u32, 
+//     symbol_info : &AdsSymbolInfo
+// ) -> Result<AdsDataTypeInfo, anyhow::Error> {
+
+//     if let Ok(dt) = AdsDataTypeId::try_from(value) {
+
+//         match dt {
+//             AdsDataTypeId::Void => {
+//                 return Err("Can't convert from VOID");
+//             },
+//             AdsDataTypeId::Int8=> {
+
+//             },
+//             AdsDataTypeId::UInt8=> {
+
+//             },
+//             AdsDataTypeId::Int16=> {
+
+//             },
+//             AdsDataTypeId::UInt16=> {
+
+//             },
+//             AdsDataTypeId::Int32=> {
+
+//             },
+//             AdsDataTypeId::UInt32=> {
+
+//             },
+//             AdsDataTypeId::Int64=> {
+
+//             },
+//             AdsDataTypeId::UInt64=> {
+
+//             },
+//             AdsDataTypeId::Real32=> {
+
+//             },
+//             AdsDataTypeId::Real64=> {
+
+//             },
+//             AdsDataTypeId::String=> {
+//                 return Ok(AdsDataTypeInfo {
+//                     name: symbol_info.name.clone(),
+//                     comment: String::new(),
+//                     entry_length: 0,
+//                     version: 0,
+//                     size: symbol_info.size,
+//                     offset: symbol_info.index_offset,
+//                     data_type: symbol_info.type_id,
+//                     flags: 0,
+//                     num_array_dimensions: 0,
+//                     num_fields: 0,
+//                     array_data_size: 0,
+//                     array_dimensions: Vec::new(),
+//                     fields: Vec::new(),
+//                 });
+//             },
+//             AdsDataTypeId::WString=> {
+
+//             },
+//             AdsDataTypeId::Real80=> {
+
+//             },
+//             AdsDataTypeId::Bit=> {
+
+//             },
+//             AdsDataTypeId::BigType=> {
+
+//             },
+//             AdsDataTypeId::MaxTypes=> {
+
+//             },
+//             _ => Err("Not a P.O.D type"),
+//         }
+//     }
+//     else {
+//         return Err("Not a P.O.D type");
+//     }
+        
+// }
 
 
 impl AdsDataTypeInfo {
@@ -182,10 +268,16 @@ impl AdsSymbolCollection {
             }
         }
         else {
-            if symbol_info.type_name.contains("STRING") || symbol_info.type_name.contains("T_MaxString") {
+
+            if let Some(ret) = self.data_types.get(&symbol_info.type_name).clone().cloned() {
+                return Some(ret);
+            }
+            else {
+                // We didn't upload this type, but it obviously exists. Return its generic information that
+                // should be useful enough for most situations.
                 return Some(AdsDataTypeInfo {
                     name: symbol_info.name.clone(),
-                    comment: String::new(),
+                    comment: format!("GENERIC {}", &symbol_info.type_name),
                     entry_length: 0,
                     version: 0,
                     size: symbol_info.size,
@@ -197,11 +289,56 @@ impl AdsSymbolCollection {
                     array_data_size: 0,
                     array_dimensions: Vec::new(),
                     fields: Vec::new(),
-                });
+                });                    
             }
-            else {
-                return self.data_types.get(&symbol_info.type_name).clone().cloned();
-            }
+
+
+            // if symbol_info.type_name.contains("STRING") || symbol_info.type_name.contains("T_MaxString") {
+            //     return Some(AdsDataTypeInfo {
+            //         name: symbol_info.name.clone(),
+            //         comment: String::new(),
+            //         entry_length: 0,
+            //         version: 0,
+            //         size: symbol_info.size,
+            //         offset: symbol_info.index_offset,
+            //         data_type: symbol_info.type_id,
+            //         flags: 0,
+            //         num_array_dimensions: 0,
+            //         num_fields: 0,
+            //         array_data_size: 0,
+            //         array_dimensions: Vec::new(),
+            //         fields: Vec::new(),
+            //     });
+            // }
+            // else {
+            //     //log::debug!("\nFundamental type: {}\n\t{:?}\n", symbol_info.type_name, symbol_info);
+
+            //     // for item in &self.data_types {
+            //     //     log::debug!("Type: {}", item.0);
+            //     // }
+
+            //     if let Some(ret) = self.data_types.get(&symbol_info.type_name).clone().cloned() {
+            //         return Some(ret);
+            //     }
+            //     else {
+            //         // We didn't upload this type, but it obviously exists. Return its generic information.
+            //         return Some(AdsDataTypeInfo {
+            //             name: symbol_info.name.clone(),
+            //             comment: format!("GENERIC {}", &symbol_info.type_name),
+            //             entry_length: 0,
+            //             version: 0,
+            //             size: symbol_info.size,
+            //             offset: symbol_info.index_offset,
+            //             data_type: symbol_info.type_id,
+            //             flags: 0,
+            //             num_array_dimensions: symbol_info.array_dimensions.len() as u16,
+            //             num_fields: 0,
+            //             array_data_size: 0,
+            //             array_dimensions: symbol_info.array_dimensions.clone(),
+            //             fields: Vec::new(),
+            //         });                    
+            //     }
+            // }
             
             
             
@@ -413,24 +550,35 @@ fn parse_datatypes( buffer: &Box<[u8]>) -> BTreeMap<String, AdsDataTypeInfo> {
     let mut offset = 0;
     let datatype_entry_len : usize = std::mem::size_of::<AdsDatatypeEntry>().try_into().unwrap();
 
-    while offset < buffer.len() && buffer[offset] != 0 {        
+    let mut num_types = 0;
+    //
+    // Cycle through and parse out all types in the PLC.
+    // 
+    while offset < buffer.len() {        
 
         if let Some(inc) = u32::read_from(&buffer[offset..offset + 4]) {
             
             let item:&AdsDatatypeEntry = unsafe{ &*buffer[offset..offset + datatype_entry_len].as_ptr().cast() };
 
-            if let Some(entry) = parse_datatype_entry_item(&item, buffer, offset ) {                
-                ret.insert(entry.name.clone(), entry);
+            if let Some(entry) = parse_datatype_entry_item(&item, buffer, offset ) {           
+                ret.insert(entry.name.clone(), entry);            
+            }
+            else {
+                log::error!("Failed to parse a type!!");
             }
 
-
+            // The inc and entryLength should be the same. The canonical example from
+            // Beckhoff uses the calculated increment, so we maintain that practice.
             offset += inc as usize;
+            num_types += 1;
         }
         else {
             break;
         }
         
     }
+
+    log::info!("Uploaded {} data types from the PLC.", num_types);
 
     return ret;
 
