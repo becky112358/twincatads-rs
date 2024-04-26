@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:11:58
 // -----
-// Last Modified: 2024-04-25 08:30:32
+// Last Modified: 2024-04-26 07:34:18
 // -----
 // 
 //
@@ -118,19 +118,45 @@ pub fn deserialize_structure(
             
             if let Some(field_info) = symbol_collection.data_types.get(&field.type_name) {
                 
-                if field_info.num_fields > 0 {
+                // log::debug!("*** field_info.num_fields > {} || field.is_structure {} || field.type_id == {}\n{:?}\n{:?}\n", 
+                //     field_info.num_fields, field.is_structure, field.type_id, field, field_info.array_dimensions
+
+                // );
+
+                if field_info.num_fields > 0 || field.is_structure || (field.type_id == 65 && !field.is_array) {
                     // This is a structure
-                    if let Some(val) = deserialize_structure(
-                        symbol_collection, 
-                        symbol_info, 
-                        &bytes[offset..offset + field.size as usize].to_vec(), 
-                        type_id
-                    ) {
-                        map.insert(field.name.clone(), val);
+
+                    match AdsDataTypeId::try_from(field.type_id) {
+                        Ok(field_type_id) => {
+
+                            //log::debug!("Field {} is a structure with size {} [{}]", field.name, field.size, field_info.size);
+
+                            if let Some(val) = deserialize_structure(
+                                symbol_collection, 
+                                field, 
+                                &bytes[offset..offset + field.size as usize].to_vec(), 
+                                &field_type_id
+                            ) {
+                                map.insert(field.name.clone(), val);
+                            }
+                            else {
+                                log::error!("Error deserializing field {} type {}", field.name, field.type_id);
+                                map.insert(field.name.clone(), VariantValue::Null);                                
+                            }
+                        },
+                        Err(err) => {
+                            log::error!("Error processing type of field {} type {} err: {}", field.name, field.type_id, err);
+                            map.insert(field.name.clone(), VariantValue::Null);
+                        }                           
                     }
+
+
                     
                 }
                 else if field.is_array {
+
+                    //log::debug!("Field {} is array.", field.name);
+
                     match AdsDataTypeId::try_from(field.type_id) {
                         Ok(field_type_id) => {
 
@@ -157,6 +183,10 @@ pub fn deserialize_structure(
                 }
                 else {
                     // plain old data
+
+                    //log::debug!("P.O.D. Field type {}\n\t{:?}", field.type_id, symbol_info);
+
+
                     match AdsDataTypeId::try_from(field.type_id) {
                         Ok(field_type_id) => {
                             if let Some(val) = deserialize_value(

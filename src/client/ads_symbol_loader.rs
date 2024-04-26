@@ -367,7 +367,9 @@ impl AdsSymbolCollection {
             let symbol = &self.symbols[&valid_symbol_name];
             let tokens = symbol_name.split(".").collect::<Vec<&str>>();
 
-            if !symbol.is_structure || tokens.len() < 3 {
+            // NOT: symbol.is_structure is not always correct on whether a type is a
+            // structure or not. Using tokens.len() is more reliable.
+            if !symbol.is_structure && tokens.len() < 3 {
                 // The request was not for a field.
                 return Ok(symbol.clone());
             }
@@ -855,11 +857,6 @@ pub fn upload_symbols( ams_address : &AmsAddr, port : i32) -> Option<AdsSymbolCo
             set_symbol_array_length(&mut symbol_info);
         }
         
-
-
-        log::info!("symbol: {} ", symbol_info.name);
-
-
         uploaded_symbols.push(symbol_info);
 
 

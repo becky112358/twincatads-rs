@@ -1290,7 +1290,7 @@ impl AdsClient {
 
 
         if let Ok(symbol) = self.symbol_collection.get_symbol_info(symbol_name) {
-            log::info!("Attempting to register {}", symbol_name);
+            
 
             let symbol_data_type;
             if let Ok(id) = AdsDataTypeId::try_from(symbol.type_id) {
@@ -1300,6 +1300,9 @@ impl AdsClient {
                 return Err(anyhow!("Failed to extract data type for symbol {}", symbol_name));
             }
         
+
+            log::info!("Attempting to register {} with type {:?}", symbol_name, symbol_data_type);
+
             //
             // Bindgen somehow flubbed the generation of the nCycleTime member, and turned it into
             // a union.

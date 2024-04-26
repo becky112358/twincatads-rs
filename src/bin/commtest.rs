@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp. All Rights Reserved.
 // Created Date: 2024-04-06 10:24:11
 // -----
-// Last Modified: 2024-04-25 21:52:18
+// Last Modified: 2024-04-26 07:23:01
 // -----
 // 
 //
@@ -45,8 +45,8 @@ async fn main() {
     
     let (mut client, mut rx) = AdsClient::new();
     // Supply AMS Address. If not set, localhost is used.
-    // client.set_address("192.168.127.1.1.1");
-    client.set_address("5.78.94.236.1.1");
+    client.set_address("192.168.127.1.1.1");
+    // client.set_address("5.78.94.236.1.1");
     
     // Supply ADS port. If not set, the default of 851 is used.
     // You should generally use the default.
@@ -70,17 +70,6 @@ async fn main() {
         log::info!("Successfully wrote symbol.");
     }
 
-
-    if let Err(err) = client.register_symbol("MAIN.fbClubSequence.nTotalSet") {
-        error!("Failed to register symbol: {}", err);
-    }
-    else {
-        log::info!("Successfully registered field of symbol.");
-    }    
-
-    log::info!("Shutting down ADS client...");
-    // Make sure the ADS client is closed.
-    client.finalize().await;
 
 
     // let js_bool = serde_json::json!(true);
@@ -207,168 +196,169 @@ async fn main() {
     // }    
     
 
-    // const NOTIFY_TAG :&str = "GM.aTestArray";
-    // const WRITE_TAG : &str = "GM.aArrayWriteTarget";
+    const NOTIFY_TAG :&str = "GM.stSequenceCollection";
+    const WRITE_TAG : &str = "GM.aArrayWriteTarget";
 
     
-    // if let Err(err) = client.register_symbol(NOTIFY_TAG) {
-    //     error!("Failed to register symbol: {}", err);
-    // }
-    // else {
+    if let Err(err) = client.register_symbol(NOTIFY_TAG) {
+        error!("Failed to register symbol: {}", err);
+    }
+    else {
 
-    //     log::info!("Testing registering a symbol a second time...");
-    //     if let Err(err) = client.register_symbol(NOTIFY_TAG) {
-    //         error!("Unexpected error when registering symbol should have been ignored: {}", err);
-    //     }
-    //     else {
-    //         log::info!("... second registration should have been skipped.");
-    //     }
+        log::info!("Testing registering a symbol a second time...");
+        if let Err(err) = client.register_symbol(NOTIFY_TAG) {
+            error!("Unexpected error when registering symbol should have been ignored: {}", err);
+        }
+        else {
+            log::info!("... second registration should have been skipped.");
+        }
         
 
-    //     // Second channel for sending notifications back to the main thread
-    //     let (tx_main, mut rx_main) = mpsc::channel(100);
+        // Second channel for sending notifications back to the main thread
+        let (tx_main, mut rx_main) = mpsc::channel(100);
 
-    //     let t1_running = running.clone();
+        let t1_running = running.clone();
 
-    //     // On the parent context (e.g., main thread), listen for notifications
-    //     let t1 = tokio::spawn(async move {
+        // On the parent context (e.g., main thread), listen for notifications
+        let t1 = tokio::spawn(async move {
             
-    //         while t1_running.load(Ordering::Relaxed) {
-    //             let timeout_duration = Duration::from_millis(4000);
-    //             let result = {
+            while t1_running.load(Ordering::Relaxed) {
+                let timeout_duration = Duration::from_millis(4000);
+                let result = {
                     
-    //                 tokio::time::timeout(timeout_duration, rx.recv()).await
-    //             };
+                    tokio::time::timeout(timeout_duration, rx.recv()).await
+                };
     
-    //             match result {
-    //                 Ok(Some(notification)) => {
-    //                     if let Err(err) = tx_main.send(notification).await {
-    //                         log::error!("Failed to send notification to main thread: {}", err );
-    //                         break;
-    //                     }
-    //                 },
-    //                 Ok(None) => {
-    //                     log::info!("T1 Channel closed.");
-    //                     break;
-    //                 },
-    //                 Err(_) => {
-    //                     log::info!("T1 Operation timed out");
-    //                 }
-    //             }
-    //         }
+                match result {
+                    Ok(Some(notification)) => {
+                        if let Err(err) = tx_main.send(notification).await {
+                            log::error!("Failed to send notification to main thread: {}", err );
+                            break;
+                        }
+                    },
+                    Ok(None) => {
+                        log::info!("T1 Channel closed.");
+                        break;
+                    },
+                    Err(_) => {
+                        // Timeout occurred. This is normal operation and allows graceful shutdown.
+                        // Loop and try recv again.
+                    }
+                }
+            }
 
-    //         log::info!("T1 task has closed.");
-    //     });
+            log::info!("T1 task has closed.");
+        });
 
 
-    //     let mut blink = false;
+        let mut blink = false;
 
-    //     let t2 = tokio::spawn(async move {
-    //         while running.load(Ordering::SeqCst) {
-    //             match rx_main.recv().await {   // recv_timeout(timeout) {
-    //                 Some(notification) => {
+        let t2 = tokio::spawn(async move {
+            while running.load(Ordering::SeqCst) {
+                match rx_main.recv().await {   // recv_timeout(timeout) {
+                    Some(notification) => {
 
-    //                     log::info!("Notification type {:?} received in main thread",  notification.event_type);
+                        log::info!("Notification type {:?} received in main thread\n\n{:?}\n\n",  notification.event_type, notification.value);
                         
-    //                     match notification.event_type {
-    //                         twincatads_rs::client::client_types::EventInfoType::Invalid => {
-    //                             log::error!("Invalid notification received.");
-    //                         },
-    //                         twincatads_rs::client::client_types::EventInfoType::DataChange => {
+                        match notification.event_type {
+                            twincatads_rs::client::client_types::EventInfoType::Invalid => {
+                                log::error!("Invalid notification received.");
+                            },
+                            twincatads_rs::client::client_types::EventInfoType::DataChange => {
 
-    //                             if let Err(err) = client.write_symbol_variant_value(WRITE_TAG, &notification.value) {
-    //                                 log::error!("Failed to write struct to client: {}", err);
+                                // if let Err(err) = client.write_symbol_variant_value(WRITE_TAG, &notification.value) {
+                                //     log::error!("Failed to write struct to client: {}", err);
             
-    //                             }
-    //                             else {
-    //                                 blink = !blink;
-    //                                 let var_blink = VariantValue::Bit(!blink);
+                                // }
+                                // else {
+                                //     blink = !blink;
+                                //     let var_blink = VariantValue::Bit(!blink);
             
-    //                                 if let Err(err) = client.write_symbol_variant_value("GM.bBoolTarget", &var_blink) {
-    //                                     log::error!("Failed to write bool from variant to client: {}", err);
-    //                                 }
+                                //     if let Err(err) = client.write_symbol_variant_value("GM.bBoolTarget", &var_blink) {
+                                //         log::error!("Failed to write bool from variant to client: {}", err);
+                                //     }
             
-    //                             }
+                                // }
             
-    //                         },
-    //                         twincatads_rs::client::client_types::EventInfoType::AdsState => {
-    //                             match AdsState::from(notification.value) {
-    //                                 AdsState::Running=> log::info!("Target device is RUNNING"),
-    //                                 AdsState::Stopped => log::info!("Target device is STOPPED"),                                
-    //                                 AdsState::Unknown => log::info!("Target device is in an unknown state."),
-    //                             }
-    //                         },
-    //                         twincatads_rs::client::client_types::EventInfoType::RouterState => {
-    //                             match RouterState::from(notification.value) {
-    //                                 RouterState::Started => log::info!("Router is RUNNING"),
-    //                                 RouterState::Stopped => log::info!("Router is STOPPED"),
-    //                                 RouterState::Removed => log::info!("Router has been removed!"),
-    //                                 RouterState::Unknown => log::info!("Router is in an unknown state."),
-    //                             }
-    //                         },
-    //                     }
+                            },
+                            twincatads_rs::client::client_types::EventInfoType::AdsState => {
+                                match AdsState::from(notification.value) {
+                                    AdsState::Running=> log::info!("Target device is RUNNING"),
+                                    AdsState::Stopped => log::info!("Target device is STOPPED"),                                
+                                    AdsState::Unknown => log::info!("Target device is in an unknown state."),
+                                }
+                            },
+                            twincatads_rs::client::client_types::EventInfoType::RouterState => {
+                                match RouterState::from(notification.value) {
+                                    RouterState::Started => log::info!("Router is RUNNING"),
+                                    RouterState::Stopped => log::info!("Router is STOPPED"),
+                                    RouterState::Removed => log::info!("Router has been removed!"),
+                                    RouterState::Unknown => log::info!("Router is in an unknown state."),
+                                }
+                            },
+                        }
 
 
-    //                 },
-    //                 None => {
-    //                     // Channel is disconnected, probably should exit
-    //                     log::info!("Channel disconnected, exiting loop.");
-    //                     break;
-    //                 }
-    //                 // Err(e) => {
-    //                 //     if e != mpsc::RecvTimeoutError::Timeout {
-    //                 //         // Channel is disconnected, probably should exit
-    //                 //         println!("Channel disconnected, exiting loop.");
-    //                 //         break;
-    //                 //     }
-    //                 // },
-    //             }
-    //         }        
+                    },
+                    None => {
+                        // Channel is disconnected, probably should exit
+                        log::info!("Channel disconnected, exiting loop.");
+                        break;
+                    }
+                    // Err(e) => {
+                    //     if e != mpsc::RecvTimeoutError::Timeout {
+                    //         // Channel is disconnected, probably should exit
+                    //         println!("Channel disconnected, exiting loop.");
+                    //         break;
+                    //     }
+                    // },
+                }
+            }        
 
-    //         log::info!("Shutting down ADS client...");
-    //         // Make sure the ADS client is closed.
-    //         client.finalize().await;
+            log::info!("Shutting down ADS client...");
+            // Make sure the ADS client is closed.
+            client.finalize().await;
 
-    //         log::info!("T2 task has closed.");
+            log::info!("T2 task has closed.");
             
-    //     });
+        });
 
         
-    //     // if let Err(err) = client.unregister_symbol(NOTIFY_TAG) {
-    //     //     error!("Failed to unregister symbol: {} ", err);
-    //     // }
+        // if let Err(err) = client.unregister_symbol(NOTIFY_TAG) {
+        //     error!("Failed to unregister symbol: {} ", err);
+        // }
 
-    //     // Handling of ctrl+C or SIGINT
-    //     let ctrl_c_future = tokio::signal::ctrl_c();
-    //     log::info!("ADS Client up and running. Press Ctrl+C to exit.");
+        // Handling of ctrl+C or SIGINT
+        let ctrl_c_future = tokio::signal::ctrl_c();
+        log::info!("ADS Client up and running. Press Ctrl+C to exit.");
 
-    //     // Await the Ctrl+C signal
-    //     let _ = ctrl_c_future.await;
-    //     log::info!("*** Ctrl+C received! Shutdown initiating... ***");
+        // Await the Ctrl+C signal
+        let _ = ctrl_c_future.await;
+        log::info!("*** Ctrl+C received! Shutdown initiating... ***");
 
-    //     r.store(false, Ordering::SeqCst);
+        r.store(false, Ordering::SeqCst);
 
-    //     if let Err(err) = t1.await {
-    //         log::error!("Failed to wait for T1 to shut down. May not have shut down properly. {} ", 
-    //             err
-    //         );
-    //     }
-    //     else {
-    //         log::info!("T1 task reports closed. Checking T2...");
-    //     }
+        if let Err(err) = t1.await {
+            log::error!("Failed to wait for T1 to shut down. May not have shut down properly. {} ", 
+                err
+            );
+        }
+        else {
+            log::info!("T1 task reports closed. Checking T2...");
+        }
 
 
-    //     if let Err(err) = t2.await {
-    //         log::error!("Failed to wait for T2 to shut down. May not have shut down properly. {} ", 
-    //             err
-    //         );
-    //     }
-    //     else {
-    //         log::info!("T2 task reports closed. Shutdown complete.");
-    //     }
+        if let Err(err) = t2.await {
+            log::error!("Failed to wait for T2 to shut down. May not have shut down properly. {} ", 
+                err
+            );
+        }
+        else {
+            log::info!("T2 task reports closed. Shutdown complete.");
+        }
 
-    // }
+    }
     
-    // info!("Goodbye!");
+    info!("Goodbye!");
     
 }

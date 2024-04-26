@@ -11,6 +11,14 @@ When trying to connect via ADS on a system where TwinCAT XAR or XAE is already i
 
 ### Known limitations
 
+#### Function Blocks (FB) and Structures with references
+
+Function blocks and structures containing reference variables can't be properly parsed. Individual items within those FBs and Structs can be parsed, but not
+the item as a whole. 
+
+Reading a complete structure is a design goal for the twincatads-rs. However, deserializing a complete function block is not currently a feature in use and isn't
+currently targetted.
+
 #### Strings
 
 Reading a string that is not declared as T_MaxString using read_symbol_value is not currently supported. 
