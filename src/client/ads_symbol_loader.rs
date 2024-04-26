@@ -18,6 +18,8 @@ use zerocopy::FromBytes;
 use std::os::raw::c_void; // c_void, etc
 use serde::Deserialize;
 
+use anyhow::anyhow;
+
 // Pull in imports from the top crate.
 use crate::{AdsDatatypeArrayInfo, AdsDatatypeEntry, AmsAddr, ADSERR_NOERR};
 use crate::AdsSymbolUploadInfo2;
@@ -345,6 +347,58 @@ impl AdsSymbolCollection {
             
         }
     }
+
+
+    /// Get the symbol info for a fully-qualified tag name, included if this is a field of
+    /// a structure, in which case some extra work has to be done to extract the info from
+    /// the uploaded symbols.
+    pub fn get_symbol_info(&self, symbol_name : &str) -> Result<AdsSymbolInfo, anyhow::Error> {
+        
+        // Extracts the portion of the symbol name up to the second period, if present.
+        let processed_symbol_name = symbol_name.splitn(3, '.').collect::<Vec<&str>>();
+        let valid_symbol_name = match processed_symbol_name.as_slice() {
+            [first, second, ..] => format!("{}.{}", first, second), // Join the first two segments
+            [single] => single.to_string(),  // Only one segment, use as is
+            _ => return Err(anyhow!("Invalid symbol name format")),
+        };
+
+        if self.symbols.contains_key(&valid_symbol_name) {
+
+            let symbol = &self.symbols[&valid_symbol_name];
+            let tokens = symbol_name.split(".").collect::<Vec<&str>>();
+
+            if !symbol.is_structure || tokens.len() < 3 {
+                // The request was not for a field.
+                return Ok(symbol.clone());
+            }
+            else {
+
+                // this was a request for a specific field
+
+                let field_name = tokens[2];
+                if let Some(dt)  = self.get_fundamental_type_info(&symbol) {
+                    for field in dt.fields {
+                        if field.name == field_name {
+                            return Ok(field);
+                        }
+                    }
+
+                    return Err(anyhow!("Failed to locate information for structure field {}", field_name));
+                }
+                else {
+                    return Err(anyhow!("Failed to locate information for structure field {}", field_name));
+                }
+
+            }
+
+        }
+        else {
+            return Err(anyhow!("Cannot location any information for symbol {}", symbol_name));
+        }
+
+
+    }
+
 }
 
 
@@ -803,9 +857,7 @@ pub fn upload_symbols( ams_address : &AmsAddr, port : i32) -> Option<AdsSymbolCo
         
 
 
-        // info!("Item {} at offset {} : {:?} ", 
-        //     i, offset, symbol_info
-        // );
+        log::info!("symbol: {} ", symbol_info.name);
 
 
         uploaded_symbols.push(symbol_info);

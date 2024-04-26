@@ -418,10 +418,11 @@ impl AdsClient {
                                             //     symbol.name
                                             // );
 
-                                            if let Some(symbol_info) = symbol_collection.symbols.get(&symbol.name) {
+                                            // if let Some(symbol_info) = symbol_collection.symbols.get(&symbol.name) {
+                                            if let Ok(symbol_info) = symbol_collection.get_symbol_info(&symbol.name) {
                                                 match ads_data::deserialize(
                                                     &symbol_collection,
-                                                    symbol_info,
+                                                    &symbol_info,
                                                     &info.data, 
                                                     &symbol.data_type_id
                                                 ) {
@@ -1275,28 +1276,30 @@ impl AdsClient {
         }
     }
 
-
-
     /// Register a symbol for on-data-change notification.
     /// Returns true if successful, false if not.
     pub fn register_symbol(&mut self, symbol_name : &str) -> Result<(), anyhow::Error> {
 
+
+        
         if let Ok(_) = get_registered_symbol_by_name(symbol_name) {
             // already registered. Do nothing.
             log::info!("Symbol {} is already registerd.", symbol_name );
             return Ok(())
         }
 
-        if  self.symbol_collection.symbols.contains_key(symbol_name) {
 
-            let symbol = &self.symbol_collection.symbols[symbol_name];
+        if let Ok(symbol) = self.symbol_collection.get_symbol_info(symbol_name) {
+            log::info!("Attempting to register {}", symbol_name);
 
-            let symbol_data_type = AdsDataTypeId::try_from(symbol.type_id);
-
-            if let Err(_) = symbol_data_type {
-                return Err(anyhow!("Unsupported data type id: {}", symbol.type_id));
+            let symbol_data_type;
+            if let Ok(id) = AdsDataTypeId::try_from(symbol.type_id) {
+                symbol_data_type = id;
             }
-
+            else {
+                return Err(anyhow!("Failed to extract data type for symbol {}", symbol_name));
+            }
+        
             //
             // Bindgen somehow flubbed the generation of the nCycleTime member, and turned it into
             // a union.
@@ -1354,7 +1357,7 @@ impl AdsClient {
                         handle: handle, 
                         notification_handle: notification_handle, 
                         name: symbol_name.to_string(),
-                        data_type_id: symbol_data_type.unwrap()
+                        data_type_id: symbol_data_type
                     });
 
                     return Ok(());

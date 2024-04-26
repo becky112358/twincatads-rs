@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp. All Rights Reserved.
 // Created Date: 2024-04-06 10:24:11
 // -----
-// Last Modified: 2024-04-25 19:31:41
+// Last Modified: 2024-04-25 21:52:18
 // -----
 // 
 //
@@ -69,6 +69,14 @@ async fn main() {
     else {
         log::info!("Successfully wrote symbol.");
     }
+
+
+    if let Err(err) = client.register_symbol("MAIN.fbClubSequence.nTotalSet") {
+        error!("Failed to register symbol: {}", err);
+    }
+    else {
+        log::info!("Successfully registered field of symbol.");
+    }    
 
     log::info!("Shutting down ADS client...");
     // Make sure the ADS client is closed.
