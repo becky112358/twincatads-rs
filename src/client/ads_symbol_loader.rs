@@ -330,8 +330,6 @@ impl AdsSymbolCollection {
             _ => return Err(anyhow!("Invalid symbol name format")),
         };
 
-        log::debug!("Checking symbol: {}", valid_symbol_name);
-
         if self.symbols.contains_key(&valid_symbol_name) {
 
             let symbol = &self.symbols[&valid_symbol_name];
@@ -346,6 +344,7 @@ impl AdsSymbolCollection {
 
                 // Check if the current segment refers to a structure
                 if symbol.is_structure {
+
                     // Or a more accurate structure check
                     // Recursive call for the nested field lookup
                     let nested_field_result = self.get_symbol_info(&remaining_symbol_name);
@@ -355,26 +354,31 @@ impl AdsSymbolCollection {
                         Err(error) => return Err(error),
                     }
                 } else {
+
                     // this was a request for a specific field
+                    // Loop through the fields until we find the specific one we need.
 
-                    let field_name = tokens[2];
-                    if let Some(dt) = self.get_fundamental_type_info(&symbol) {
-                        for field in dt.fields {
-                            if field.name == field_name {
-                                return Ok(field);
+                    let mut tmp_symbol = symbol.clone();
+                    for i in 2.. tokens.len() {
+                        
+                        let field_name = tokens[i];
+                        if let Some(dt) = self.get_fundamental_type_info(&tmp_symbol) {
+                            for field in dt.fields {
+                                if field.name == field_name {
+                                    tmp_symbol = field.clone();                                    
+                                }
                             }
-                        }
 
-                        return Err(anyhow!(
-                            "Failed to locate information for structure field {}",
-                            field_name
-                        ));
-                    } else {
-                        return Err(anyhow!(
-                            "Failed to locate information for structure field {}",
-                            field_name
-                        ));
+                        } else {
+                            return Err(anyhow!(
+                                "Failed to locate information for structure field {}",
+                                field_name
+                            ));
+                        }
+    
                     }
+
+                    return Ok(tmp_symbol);
                 }
             }
         } else {
