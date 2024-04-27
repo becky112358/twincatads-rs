@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp. All Rights Reserved.
 // Created Date: 2024-04-06 10:24:11
 // -----
-// Last Modified: 2024-04-26 07:23:01
+// Last Modified: 2024-04-27 11:39:46
 // -----
 // 
 //
@@ -45,9 +45,10 @@ async fn main() {
     
     let (mut client, mut rx) = AdsClient::new();
     // Supply AMS Address. If not set, localhost is used.
-    client.set_address("192.168.127.1.1.1");
-    // client.set_address("5.78.94.236.1.1");
-    
+    // client.set_address("192.168.127.1.1.1"); // C6015 test unit
+    // client.set_address("5.78.94.236.1.1");   // VM test instance
+    client.set_address("5.78.94.236.1.1");   // CX3 Test Unit
+
     // Supply ADS port. If not set, the default of 851 is used.
     // You should generally use the default.
     client.set_port(851);
@@ -149,12 +150,28 @@ async fn main() {
     //     {"fReal" : 1.0101,"nInt" : 79,"bBit" : false},
     // ]);
 
-    // if let Err(err) = client.write_symbol_json_value("GM.aStructArrayJsonWriteTarget", &js_struct_array) {
-    //     log::error!("An error occurred writing array of struct from json: {}", err);
-    // }
-    // else {
-    //     log::info!("Successfully wrote out JSON array of struct.");
-    // }
+
+    // Practical test of S_SeqeuenceItem array in our Club Durability systems.
+    let js_struct_array= serde_json::json!([
+        {"fX" : 10.123,"fY" : 1,"fPsi" : 1, "nHits" : 1, "bStop" : true},
+        {"fX" : 9.456,"fY" : 2,"fPsi" : 2, "nHits" : 2, "bStop" : false},
+        {"fX" : 8.789,"fY" : 3,"fPsi" : 3, "nHits" : 3, "bStop" : true},
+        {"fX" : 7.234,"fY" : 4,"fPsi" : 4, "nHits" : 4, "bStop" :false},
+        {"fX" : 6,"fY" : 5,"fPsi" : 5, "nHits" : 5, "bStop" :true},
+        {"fX" : 5.567,"fY" : 6,"fPsi" : 6, "nHits" : 6, "bStop" :false},
+        {"fX" : 4.890,"fY" : 7,"fPsi" : 7, "nHits" : 7, "bStop" : true},
+        {"fX" : 3,"fY" : 8,"fPsi" : 8, "nHits" : 8, "bStop" :false},
+        {"fX" : 2.1,"fY" : 9,"fPsi" : 9, "nHits" : 9, "bStop" : true},
+        {"fX" : 1.0101,"fY" : 10,"fPsi" : 10, "nHits" : 10, "bStop" :false},
+    ]);
+
+
+    if let Err(err) = client.write_symbol_json_value("GM.stSequenceCollection.aData", &js_struct_array) {
+        log::error!("An error occurred writing array of struct from json: {}", err);
+    }
+    else {
+        log::info!("Successfully wrote out JSON array of struct.");
+    }
     
     // // Write a value to a symbol in the PLC
     // if let Err(err) = client.write_symbol_string_value(
@@ -196,8 +213,15 @@ async fn main() {
     // }    
     
 
+
+
+
+
     const NOTIFY_TAG :&str = "GM.stSequenceCollection";
     const WRITE_TAG : &str = "GM.aArrayWriteTarget";
+
+
+    
 
     
     if let Err(err) = client.register_symbol(NOTIFY_TAG) {
@@ -258,7 +282,8 @@ async fn main() {
                 match rx_main.recv().await {   // recv_timeout(timeout) {
                     Some(notification) => {
 
-                        log::info!("Notification type {:?} received in main thread\n\n{:?}\n\n",  notification.event_type, notification.value);
+                        // log::info!("Notification type {:?} received in main thread\n\n{:?}\n\n",  notification.event_type, notification.value);
+                        log::info!("Notification type {:?} received in main thread",  notification.event_type);
                         
                         match notification.event_type {
                             twincatads_rs::client::client_types::EventInfoType::Invalid => {

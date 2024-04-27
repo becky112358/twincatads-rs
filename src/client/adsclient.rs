@@ -853,37 +853,40 @@ impl AdsClient {
     fn write_raw_bytes(&mut self, symbol_name: &str, bytes : &[u8] ) -> Result<(),anyhow::Error> {
 
         let symbol_information = self.get_symbol_entry(symbol_name);
-        if let Ok(info) = symbol_information{
+        match symbol_information{
 
-            let raw_address = &mut self.address as *mut AmsAddr;
+            Ok(info) => {
 
-            // AdsSyncWriteReqEx requires a mutable pointer to the byte buffer, so we need to 
-            // make a copy, then a pointer to that copy.
-            let mut cloned_buffer = bytes.to_vec();
-            let ptr_buffer = cloned_buffer.as_mut_ptr() as *mut c_void;
+                let raw_address = &mut self.address as *mut AmsAddr;
 
-            unsafe {
-                let rc = AdsSyncWriteReqEx(
-                    self.current_comms_port,
-                    raw_address,
-                    info.iGroup,
-                    info.iOffs,
-                    bytes.len() as u32,
-                    ptr_buffer
-                );
-            
-                if rc != 0
-                {
-                    Err(anyhow!("Failed to write symbol {} with error {}", symbol_name, rc))
-                }                
-                else {
-                    Ok(())
+                // AdsSyncWriteReqEx requires a mutable pointer to the byte buffer, so we need to 
+                // make a copy, then a pointer to that copy.
+                let mut cloned_buffer = bytes.to_vec();
+                let ptr_buffer = cloned_buffer.as_mut_ptr() as *mut c_void;
+
+                unsafe {
+                    let rc = AdsSyncWriteReqEx(
+                        self.current_comms_port,
+                        raw_address,
+                        info.iGroup,
+                        info.iOffs,
+                        bytes.len() as u32,
+                        ptr_buffer
+                    );
+                
+                    if rc != 0
+                    {
+                        Err(anyhow!("Failed to write symbol {} with error {}", symbol_name, rc))
+                    }                
+                    else {
+                        Ok(())
+                    }
                 }
-            }
 
-        }
-        else {
-            Err(anyhow!("Failed to read information for symbol {}", symbol_name))
+            },
+            Err(err) => {
+                Err(anyhow!("Failed to read information for symbol {} : {}", symbol_name, err))
+            }
         }
 
     }
@@ -906,65 +909,69 @@ impl AdsClient {
 
         let symbol_information = self.get_symbol_entry(symbol_name);
 
-        if let Ok(info) = symbol_information{
+        match symbol_information {
 
-            unsafe {
+            Ok(info) => {            
 
-                // get the handle of the named symbol
-    
-                let err = AdsSyncReadWriteReqEx2(
-                    self.current_comms_port,
-                    raw_address, 
-                    ADSIGRP_SYM_HNDBYNAME, 
-                    0x0,
-                    std::mem::size_of::<u32>().try_into().unwrap(),
-                    ptr_handle,
-                    symbol_name.len() as u32,
-                    ptr_name,
-                    ptr_bytes_read
-                );
-    
-    
-                if err != 0 {
-                    // an error occurred.
-    
-                    return Err(anyhow!("Error {} occurred!", err));
-                }
-                else {
+                unsafe {
 
-                    // Create a buffer of the appropriate sise, filled with 0's.
-                    let mut buffer = vec![0u8;info.size as usize];
-                    // Create a pointer to that under
-                    let ptr_buffer = buffer.as_mut_ptr() as *mut c_void;
-
-    
-                    let read_err = AdsSyncReadReqEx2( 
-                        self.current_comms_port,                   
+                    // get the handle of the named symbol
+        
+                    let err = AdsSyncReadWriteReqEx2(
+                        self.current_comms_port,
                         raw_address, 
-                        ADSIGRP_SYM_VALBYHND, 
-                        handle,
-                        info.size,
-                        ptr_buffer,
-                        std::ptr::null_mut()
+                        ADSIGRP_SYM_HNDBYNAME, 
+                        0x0,
+                        std::mem::size_of::<u32>().try_into().unwrap(),
+                        ptr_handle,
+                        symbol_name.len() as u32,
+                        ptr_name,
+                        ptr_bytes_read
                     );
-
-                    if read_err != 0 {
-                        // TODO: convert error code to error string.
-                        return Err(anyhow!("Error {} occurred reading value into buffer", read_err));
+        
+        
+                    if err != 0 {
+                        // an error occurred.
+        
+                        return Err(anyhow!("Error {} occurred!", err));
                     }
                     else {
-                        return Ok(buffer);
+
+                        // Create a buffer of the appropriate sise, filled with 0's.
+                        let mut buffer = vec![0u8;info.size as usize];
+                        // Create a pointer to that under
+                        let ptr_buffer = buffer.as_mut_ptr() as *mut c_void;
+
+        
+                        let read_err = AdsSyncReadReqEx2( 
+                            self.current_comms_port,                   
+                            raw_address, 
+                            ADSIGRP_SYM_VALBYHND, 
+                            handle,
+                            info.size,
+                            ptr_buffer,
+                            std::ptr::null_mut()
+                        );
+
+                        if read_err != 0 {
+                            // TODO: convert error code to error string.
+                            return Err(anyhow!("Error {} occurred reading value into buffer", read_err));
+                        }
+                        else {
+                            return Ok(buffer);
+                        }
+                    
                     }
-                
                 }
+
             
+            },
+            Err(err) => {
+                return Err(anyhow!("Error : could not obtain handle to symbol {} : {}",
+                    symbol_name,
+                    err
+                ));
             }            
-
-
-        }
-        else {
-            // TODO: convert error code to error string.
-            return Err(anyhow!("Error : could not obtain handle to symbol. Symbol exist?"));
         }
 
   
@@ -981,10 +988,10 @@ impl AdsClient {
                     Ok(info) => {
                         match AdsDataTypeId::try_from(info.dataType) {
                             Ok(dt) => {
-                                if let Some(symbol_info) = self.symbol_collection.symbols.get(symbol_name) {
+                                if let Ok(symbol_info) = self.symbol_collection.get_symbol_info(symbol_name) {
                                     if let Some(ret) = ads_data::deserialize(
                                         &self.symbol_collection,
-                                        symbol_info,
+                                        &symbol_info,
                                         &buffer, 
                                         &dt
                                     ) {
@@ -1094,7 +1101,7 @@ impl AdsClient {
     /// expected to match the target symbol in the PLC exactly; this function will not convert.
     pub fn write_symbol_variant_value(&mut self, symbol_name: &str, value: &VariantValue) -> Result<(), anyhow::Error> {
 
-        if let Some(symbol_info) = self.symbol_collection.symbols.get(symbol_name) {           
+        if let Ok(symbol_info) = self.symbol_collection.get_symbol_info(symbol_name) {           
 
             match serialize(&self.symbol_collection, &symbol_info, value) {
                 Ok(bytes) => {
@@ -1261,18 +1268,20 @@ impl AdsClient {
     /// - `Err(anyhow::Error)`: If there is an error in locating the symbol, converting the value, or during write.    
     pub fn write_symbol_json_value(&mut self, symbol_name: &str, value : &serde_json::Value) -> Result<(), anyhow::Error> {
 
-        if let Some(info) = self.symbol_collection.symbols.get(symbol_name) {
-            match self.convert_json_to_variant(&value, &info) {
-                Ok(var) => {
-                    return self.write_symbol_variant_value(symbol_name, &var);
-                },
-                Err(err) => {
-                    return Err(anyhow!("Error writing symbol {} : {}", symbol_name, err));
-                },
+        match self.symbol_collection.get_symbol_info(symbol_name) {
+            Ok(info) => {
+                match self.convert_json_to_variant(&value, &info) {
+                    Ok(var) => {
+                        return self.write_symbol_variant_value(symbol_name, &var);
+                    },
+                    Err(err) => {
+                        return Err(anyhow!("Error writing symbol {} : {}", symbol_name, err));
+                    },
+                }
+            },
+            Err(err) => {
+                return Err(anyhow!("Failed to locate info on symbol {} : {}", symbol_name, err));
             }
-        }
-        else {
-            return Err(anyhow!("Failed to locate info on symbol {}", symbol_name));
         }
     }
 

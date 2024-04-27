@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:11:58
 // -----
-// Last Modified: 2024-04-26 07:34:18
+// Last Modified: 2024-04-27 12:10:36
 // -----
 // 
 //
@@ -106,7 +106,7 @@ pub fn deserialize_structure(
     symbol_collection: &AdsSymbolCollection,  
     symbol_info: &AdsSymbolInfo,
     bytes : &Vec<u8>, 
-    type_id : &AdsDataTypeId 
+    _type_id : &AdsDataTypeId 
 ) -> Option<VariantValue> {
     
     if let Some(dt) = symbol_collection.get_fundamental_type_info(&symbol_info) {
