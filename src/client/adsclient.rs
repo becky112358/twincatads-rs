@@ -35,7 +35,7 @@ use mechutil::variant::{self, VariantValue};
 
 use crate::client::ads_symbol_loader;
 use crate::client::client_types::EventInfoType;
-use crate::{AdsAmsRegisterRouterNotification, AdsAmsUnRegisterRouterNotification, AmsAddr};
+use crate::{AdsAmsRegisterRouterNotification, AdsAmsUnRegisterRouterNotification, AdsPortClose, AmsAddr};
 use crate::AdsSymbolEntry;
 use crate::AdsNotificationHeader;
 use crate::AdsGetLocalAddress;
@@ -338,11 +338,13 @@ impl AdsClient {
         self.address.port = s;
     }
 
-    /// Spin up the Ads library and open a 
-    /// port to the router. Opening the port
-    /// isn't the same as opening the connection, but
-    /// it's a required first step.
-    pub fn initialize(&mut self) {
+    /// Spin up the Ads library, open a port to the remote device, and upload the information
+    /// from the remote target device. 
+    /// 
+    /// ## Returns:
+    /// - Ok if successful. The connection is ready to use.
+    /// - Err if fails to make connection to target device. The connection is completely closed and initialize needs to be called again.
+    pub fn initialize(&mut self) -> Result<(), anyhow::Error> {
 
         self.symbol_entries.clear();
 
@@ -372,150 +374,169 @@ impl AdsClient {
 
         let mut global_sender = SYMBOL_MANAGER.sender.lock().unwrap();
         global_sender.push(tx);
-
+        
 
         //
         // Buffer all the symbol information from the PLC.
         //
-        self.upload_all_symbols();
+        match self.upload_all_symbols() {
 
+            Ok(_) => {
 
-        let notification_tx = self.notification_tx.clone();
-        let shutdown_signal_clone = self.shutdown_signal.clone();
-        let symbol_collection = self.symbol_collection.clone();
+                let notification_tx = self.notification_tx.clone();
+                let shutdown_signal_clone = self.shutdown_signal.clone();
+                let symbol_collection = self.symbol_collection.clone();
 
-        let child = tokio::task::spawn(async move {
+                let child = tokio::task::spawn(async move {
 
-            let ten_millis = time::Duration::from_millis(10);
-            let timeout = time::Duration::from_secs(1); // Set your desired timeout
-            //let mut ads_state : i16 = -1;
-            //let mut router_state : i16 = -1;        
+                    let ten_millis = time::Duration::from_millis(10);
+                    let timeout = time::Duration::from_secs(1); // Set your desired timeout
+                    //let mut ads_state : i16 = -1;
+                    //let mut router_state : i16 = -1;        
 
-            loop {
-            
-                if shutdown_signal_clone.load(Ordering::SeqCst) {
-                    info!("AdsClient: shutdown signal received, exiting notification thread.");
-                    break; 
-                }                
-
-                let result = {
+                    loop {
                     
-                    tokio::time::timeout(timeout, rx.recv()).await
-                };
+                        if shutdown_signal_clone.load(Ordering::SeqCst) {
+                            info!("AdsClient: shutdown signal received, exiting notification thread.");
+                            break; 
+                        }                
 
-
-                match result  { 
-
-                    Ok(opt) => {
-                        match opt {
-                            Some(info) => {
-                                match info.event_type {
-                                    EventInfoType::DataChange => {
-                                        if let Ok(symbol) = get_registered_symbol_by_handle(info.id) {
-
-                                            // log::debug!("CHANNEL DATA NOTIFICATION: {} event received for symbol: {}", 
-                                            //     info.id,
-                                            //     symbol.name
-                                            // );
-
-                                            // if let Some(symbol_info) = symbol_collection.symbols.get(&symbol.name) {
-                                            if let Ok(symbol_info) = symbol_collection.get_symbol_info(&symbol.name) {
-                                                match ads_data::deserialize(
-                                                    &symbol_collection,
-                                                    &symbol_info,
-                                                    &info.data, 
-                                                    &symbol.data_type_id
-                                                ) {
-                                                    Some(var) => {
-                    
-                                                        let notification = AdsClientNotification::new_datachange(&symbol.name, &var);
-                                                        
-                                                        if let Err(err) = notification_tx.send(notification).await {
-                                                            error!("Failed to send notification on {} to parent with error: {}", 
-                                                                symbol.name, 
-                                                                err
-                                                            );
-                                                        }
-                    
-                                                    },
-                                                    None => {
-                                                        log::error!("Failed to create Variant for notification on symbol {}", symbol.name);
-                                                    }
-                                                }
-                    
-                                            }
-                                            else {
-                                                log::error!("Failed to locate symbol name {} in uploaded symbol table.", symbol.name);
-                                            }
-
-                                            
-                                        }
-                                        else {
-                                            log::error!("Channel data notification received for unknown error.");
-                                        }            
-                                    }
-                                    EventInfoType::Invalid => {
-                                        log::warn!("Invalid notification received. Ignoring.");
-                                    },
-                                    EventInfoType::AdsState => {
-                                        if let Some(state ) = i16::read_from(&info.data) {
-
-                                            let notification = AdsClientNotification::new_ads_state(state);
-                                                        
-                                            if let Err(err) = notification_tx.send(notification).await {
-                                                error!("Failed to send ads state notification to parent with error: {}", 
-                                                    err
-                                                );
-                                            }                                    
-
-                                            log::info!("PLC state is now: {}", state);
-                                        }
-                                        else {
-                                            log::error!("Failed to extract PLC state from notification.");
-                                        }
-                                        
-                                    },
-                                    EventInfoType::RouterState => {
-                                        if let Some(state ) = i16::read_from(&info.data) {
-
-                                            let notification = AdsClientNotification::new_router_state(state);
-                                                        
-                                            if let Err(err) = notification_tx.send(notification).await {
-                                                error!("Failed to send router state notification to parent with error: {}", 
-                                                    err
-                                                );
-                                            }                                    
-
-                                            log::info!("ADS Router is now: {}", state);
-                                        }
-                                        else {
-                                            log::error!("Failed to extract PLC state from notification.");
-                                        }
-                                    },
-                                }
-                                let _ = tokio::time::sleep(ten_millis).await;          
-                            },
-                            None => {
-                                info!("Notification Sender has disconnected or faulted. No more notifications will be received.");
-                                break;    
-                            }
-
+                        let result = {
+                            
+                            tokio::time::timeout(timeout, rx.recv()).await
                         };
 
-                    },
-                    Err(_) => {
-                        // Timeout. Simply loop up.
-                        let _ = tokio::time::sleep(ten_millis).await;
-                    }
+
+                        match result  { 
+
+                            Ok(opt) => {
+                                match opt {
+                                    Some(info) => {
+                                        match info.event_type {
+                                            EventInfoType::DataChange => {
+                                                if let Ok(symbol) = get_registered_symbol_by_handle(info.id) {
+
+                                                    // log::debug!("CHANNEL DATA NOTIFICATION: {} event received for symbol: {}", 
+                                                    //     info.id,
+                                                    //     symbol.name
+                                                    // );
+
+                                                    // if let Some(symbol_info) = symbol_collection.symbols.get(&symbol.name) {
+                                                    if let Ok(symbol_info) = symbol_collection.get_symbol_info(&symbol.name) {
+                                                        match ads_data::deserialize(
+                                                            &symbol_collection,
+                                                            &symbol_info,
+                                                            &info.data, 
+                                                            &symbol.data_type_id
+                                                        ) {
+                                                            Some(var) => {
+                            
+                                                                let notification = AdsClientNotification::new_datachange(&symbol.name, &var);
+                                                                
+                                                                if let Err(err) = notification_tx.send(notification).await {
+                                                                    error!("Failed to send notification on {} to parent with error: {}", 
+                                                                        symbol.name, 
+                                                                        err
+                                                                    );
+                                                                }
+                            
+                                                            },
+                                                            None => {
+                                                                log::error!("Failed to create Variant for notification on symbol {}", symbol.name);
+                                                            }
+                                                        }
+                            
+                                                    }
+                                                    else {
+                                                        log::error!("Failed to locate symbol name {} in uploaded symbol table.", symbol.name);
+                                                    }
+
+                                                    
+                                                }
+                                                else {
+                                                    log::error!("Channel data notification received for unknown error.");
+                                                }            
+                                            }
+                                            EventInfoType::Invalid => {
+                                                log::warn!("Invalid notification received. Ignoring.");
+                                            },
+                                            EventInfoType::AdsState => {
+                                                if let Some(state ) = i16::read_from(&info.data) {
+
+                                                    let notification = AdsClientNotification::new_ads_state(state);
+                                                                
+                                                    if let Err(err) = notification_tx.send(notification).await {
+                                                        error!("Failed to send ads state notification to parent with error: {}", 
+                                                            err
+                                                        );
+                                                    }                                    
+
+                                                    log::info!("PLC state is now: {}", state);
+                                                }
+                                                else {
+                                                    log::error!("Failed to extract PLC state from notification.");
+                                                }
+                                                
+                                            },
+                                            EventInfoType::RouterState => {
+                                                if let Some(state ) = i16::read_from(&info.data) {
+
+                                                    let notification = AdsClientNotification::new_router_state(state);
+                                                                
+                                                    if let Err(err) = notification_tx.send(notification).await {
+                                                        error!("Failed to send router state notification to parent with error: {}", 
+                                                            err
+                                                        );
+                                                    }                                    
+
+                                                    log::info!("ADS Router is now: {}", state);
+                                                }
+                                                else {
+                                                    log::error!("Failed to extract PLC state from notification.");
+                                                }
+                                            },
+                                        }
+                                        let _ = tokio::time::sleep(ten_millis).await;          
+                                    },
+                                    None => {
+                                        info!("Notification Sender has disconnected or faulted. No more notifications will be received.");
+                                        break;    
+                                    }
+
+                                };
+
+                            },
+                            Err(_) => {
+                                // Timeout. Simply loop up.
+                                let _ = tokio::time::sleep(ten_millis).await;
+                            }
+                        }
+                    }            
+
+                });
+
+                self.notification_join_handle = Some(child);
+
+                self.register_state_notification();
+                self.register_ads_router_notification();
+
+                return Ok(());
+
+            },
+            Err(err) => {
+
+                // This communication channel will no longer function.
+                global_sender.pop();
+
+                unsafe {
+                    AdsPortCloseEx(self.current_comms_port);
+                    AdsPortClose();
                 }
-            }            
+                
+                return Err(anyhow!("{}", err));
+            }
 
-        });
-
-        self.notification_join_handle = Some(child);
-
-        self.register_state_notification();
-        self.register_ads_router_notification();
+        }
 
 
 
@@ -681,9 +702,13 @@ impl AdsClient {
 
     /// Upload and buffer all available symbols from the controller.
     #[allow(dead_code)]
-    pub fn upload_all_symbols(&mut self) {
+    pub fn upload_all_symbols(&mut self) -> Result<(), anyhow::Error> {
         if let Some(res) = ads_symbol_loader::upload_symbols(&self.address, self.current_comms_port) {
             self.symbol_collection = res;
+            return Ok(());
+        }
+        else {
+            return Err(anyhow!("Failed to upload symbols, which indicates a failure to connect to the device."));
         }
     }
 
@@ -1533,47 +1558,42 @@ unsafe extern "C" fn ads_value_callback(
 unsafe fn handle_ads_value_callback(
     _pAddr: *mut AmsAddr,
     pNotification: *mut AdsNotificationHeader,
-    hUser: ::std::os::raw::c_ulong
+    hUser: ::std::os::raw::c_ulong,
 ) {
-
     let id = hUser as u32;
 
     if let Ok(_) = get_registered_symbol_by_handle(id) {
-
-        // Assuming `cbSampleSize` gives the size of the data in bytes
         let data_size = (*pNotification).cbSampleSize as usize;
+        let data_slice = slice::from_raw_parts((*pNotification).data.as_ptr(), data_size);
 
-        // Create a slice from the `data` pointer for safe access
-        // This is safe because we trust `cbSampleSize` to give us the correct length of the data
-        let data_slice = slice::from_raw_parts((*pNotification).data.as_ptr(), data_size);        
-                
-        let global_sender = SYMBOL_MANAGER.sender.lock().unwrap();
+        let mut global_sender = SYMBOL_MANAGER.sender.lock().unwrap();
 
-        for i in 0 .. global_sender.len() {
+        // Collect indices of the failed sends to remove them later
+        let mut failed_indices = Vec::new();
 
+        for (index, sender) in global_sender.iter().enumerate() {
             let dcei = RouterNotificationEventInfo {
-                event_type : EventInfoType::DataChange,
-                id : id,
-                data : Vec::from(data_slice)
+                event_type: EventInfoType::DataChange,
+                id: id,
+                data: Vec::from(data_slice),
             };
 
-            match global_sender[i].try_send(dcei) {
-                Ok(_) => {},
-                Err(err) => log::error!("Failed to send on notification channel for DATA CHANGE: {}", err),
+            if sender.try_send(dcei).is_err() {
+                log::error!("Failed to send on notification channel for DATA CHANGE, channel will be removed.");
+                failed_indices.push(index);
             }
-                
         }
 
-    }
-    else {
+        // Remove channels in reverse order to maintain correct indices
+        for index in failed_indices.into_iter().rev() {
+            global_sender.remove(index);
+        }
+    } else {
         log::warn!(
             "CALLBACK: Unknown handle {} received for on value change notification.",
             id
         );
     }
-
-   
-
 }
 
 

@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp. All Rights Reserved.
 // Created Date: 2024-04-06 10:24:11
 // -----
-// Last Modified: 2024-04-27 16:16:17
+// Last Modified: 2024-05-02 06:38:34
 // -----
 // 
 //
@@ -45,16 +45,22 @@ async fn main() {
     
     let (mut client, mut rx) = AdsClient::new();
     // Supply AMS Address. If not set, localhost is used.
-    // client.set_address("192.168.127.1.1.1"); // C6015 test unit
+    client.set_address("192.168.127.1.1.1"); // C6015 test unit
     // client.set_address("5.78.94.236.1.1");   // VM test instance
-    client.set_address("5.78.94.236.1.1");   // CX3 Test Unit
+    // client.set_address("5.78.94.236.1.1");   // CX3 Test Unit
 
     // Supply ADS port. If not set, the default of 851 is used.
     // You should generally use the default.
     client.set_port(851);
      
     // Make the connection to the ADS router
-    client.initialize();
+    while let Err(err) = client.initialize() {
+        log::error!("Failed to initialize client: {}", err);
+        tokio::time::sleep(Duration::from_secs(7)).await;
+        
+        // For non async functions, use:
+        // thread::sleep(Duration::from_secs(7));
+    }
 
 
     if let Err(err) = client.write_symbol_variant_value("GNV.nClubBackPosition", &VariantValue::UInt32(855)) {
