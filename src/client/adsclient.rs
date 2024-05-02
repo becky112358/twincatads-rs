@@ -1457,7 +1457,7 @@ impl AdsClient {
             // Bindgen somehow flubbed the generation of the nCycleTime member, and turned it into
             // a union.
             //
-            let nCycleTime = AdsNotificationAttrib__bindgen_ty_1 {nCycleTime: 100000}; // unit = 100ns, 10msec = 100000
+            let nCycleTime = AdsNotificationAttrib__bindgen_ty_1 {nCycleTime: 500000}; // unit = 100ns, 10msec = 100000
 
             let mut attrib = AdsNotificationAttrib {
                 cbLength : symbol.size,
@@ -1744,7 +1744,7 @@ unsafe fn handle_ads_value_callback(
         let mut global_sender = SYMBOL_MANAGER.sender.lock().unwrap();
 
         // Collect indices of the failed sends to remove them later
-        let mut failed_indices = Vec::new();
+        //let mut failed_indices = Vec::new();
 
         for (index, sender) in global_sender.iter().enumerate() {
             let dcei = RouterNotificationEventInfo {
@@ -1753,16 +1753,16 @@ unsafe fn handle_ads_value_callback(
                 data: Vec::from(data_slice),
             };
 
-            if sender.try_send(dcei).is_err() {
-                log::error!("Failed to send on notification channel for DATA CHANGE, channel will be removed.");
-                failed_indices.push(index);
-            }
+            // if sender.try_send(dcei).is_err() {
+            //     log::error!("Failed to send on notification channel for DATA CHANGE, channel will be removed.");
+            //     failed_indices.push(index);
+            // }
         }
 
         // Remove channels in reverse order to maintain correct indices
-        for index in failed_indices.into_iter().rev() {
-            global_sender.remove(index);
-        }
+        // for index in failed_indices.into_iter().rev() {
+        //     global_sender.remove(index);
+        // }
     } else {
         log::warn!(
             "CALLBACK: Unknown handle {} received for on value change notification.",
