@@ -1753,10 +1753,11 @@ unsafe fn handle_ads_value_callback(
                 data: Vec::from(data_slice),
             };
 
-            // if sender.try_send(dcei).is_err() {
-            //     log::error!("Failed to send on notification channel for DATA CHANGE, channel will be removed.");
-            //     failed_indices.push(index);
-            // }
+            if sender.try_send(dcei).is_err() {
+                log::error!("Failed to send on notification channel for DATA CHANGE!");
+                //log::error!("Failed to send on notification channel for DATA CHANGE, channel will be removed.");
+                //failed_indices.push(index);
+            }
         }
 
         // Remove channels in reverse order to maintain correct indices
