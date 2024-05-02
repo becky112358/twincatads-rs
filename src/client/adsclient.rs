@@ -35,7 +35,15 @@ use mechutil::variant::{self, VariantValue};
 
 use crate::client::ads_symbol_loader;
 use crate::client::client_types::EventInfoType;
-use crate::{AdsAmsRegisterRouterNotification, AdsAmsUnRegisterRouterNotification, AdsPortClose, AmsAddr};
+use crate::{
+    AdsAmsRegisterRouterNotification, 
+    AdsAmsUnRegisterRouterNotification, 
+    AdsPortClose, 
+    AdsSyncAddDeviceNotificationReq, 
+    AdsSyncDelDeviceNotificationReq, 
+    AmsAddr, 
+    ADSIGRP_SYM_VERSION
+};
 use crate::AdsSymbolEntry;
 use crate::AdsNotificationHeader;
 use crate::AdsGetLocalAddress;
@@ -278,7 +286,14 @@ pub struct AdsClient {
     shutdown_signal : Arc<AtomicBool>,
 
     /// Notification handle for the ADS State callback.
-    ads_state_notification_handle : u32
+    ads_state_notification_handle : u32,
+
+    /// Notification handle detecting changes in the target device symbol table.
+    ads_symbol_table_notification_handle : u32,
+
+    /// Re-registration count. Just connecting will give us a change signal, so
+    /// we count to see if we should actually notify the parent that a change occurred.
+    symbol_reregistration_count : usize
 
 }
 
@@ -298,7 +313,9 @@ impl AdsClient {
             notification_tx: tx,
             shutdown_signal : Arc::new(AtomicBool::new(false)),
             notification_join_handle: None,
-            ads_state_notification_handle: 0,            
+            ads_state_notification_handle: 0,     
+            ads_symbol_table_notification_handle: 0,
+            symbol_reregistration_count : 0       
         };
 
 
@@ -495,6 +512,19 @@ impl AdsClient {
                                                     log::error!("Failed to extract PLC state from notification.");
                                                 }
                                             },
+                                            EventInfoType::SymbolTableChange => {
+
+                                                let notification = AdsClientNotification::new_symbol_table();
+                                                            
+                                                if let Err(err) = notification_tx.send(notification).await {
+                                                    error!("Failed to send symbol table notification to parent with error: {}", 
+                                                        err
+                                                    );
+                                                }                                    
+
+                                                log::info!("Target Device Symbol Table has changed!");                                                
+                                            }
+
                                         }
                                         let _ = tokio::time::sleep(ten_millis).await;          
                                     },
@@ -519,6 +549,7 @@ impl AdsClient {
 
                 self.register_state_notification();
                 self.register_ads_router_notification();
+                self.register_symbol_table_notification();
 
                 return Ok(());
 
@@ -552,6 +583,7 @@ impl AdsClient {
         self.unregister_ads_router_notification();
         self.unregister_state_notification();
         self.unregister_all_symbols();
+        self.unregister_symbol_table_notification();
 
         info!("AdsClient closing connection to ADS Router...");
         if self.current_comms_port != 0 {
@@ -698,6 +730,87 @@ impl AdsClient {
         
   
     }
+
+
+    fn register_symbol_table_notification(&mut self) {
+        let raw_address = &mut self.address as *mut AmsAddr;
+
+
+        let changeFilter = AdsNotificationAttrib__bindgen_ty_1 {
+            dwChangeFilter : 500000 // 500ms
+        };
+
+        let mut adsNotificationAttrib = AdsNotificationAttrib  {
+            cbLength: 1,
+            nTransMode: nAdsTransMode_ADSTRANS_SERVERONCHA,
+            nMaxDelay: 500000, // 500ms
+            __bindgen_anon_1 : changeFilter
+        };
+
+        let raw_attr = &mut adsNotificationAttrib as *mut AdsNotificationAttrib;              
+        let ptr_notification_handle = &mut self.ads_symbol_table_notification_handle  as *mut u32;
+
+        unsafe {
+
+
+            // NOTE: You can't use the Extended, thread-safe version of this function for registering
+            // this particular notification.
+            let state_noti_err = AdsSyncAddDeviceNotificationReq(
+                raw_address, 
+                ADSIGRP_SYM_VERSION,
+                0,
+                raw_attr,
+                Some(ads_symbol_table_callback),
+                self.id,
+                ptr_notification_handle    
+            );
+
+            if state_noti_err != 0 {
+                log::error!("Failed to register ADS symbol table change notification: {}", state_noti_err);
+            }            
+            else {
+                log::info!("Registered ADS symbol table notification successfully.");
+            }
+
+
+        }
+
+    }
+
+
+
+
+    /// Unregister the callback from the ADS router. Should be called during finalize
+    /// to avoid bogging down the ADS Router. 
+    fn unregister_symbol_table_notification(&mut self) {
+
+        if self.ads_symbol_table_notification_handle == 0 {
+            return;
+        }
+
+        let raw_address = &mut self.address as *mut AmsAddr;
+
+        unsafe {
+
+            // NOTE: You can't use the Extended, thread-safe version of this function for registering
+            // this particular notification.
+            let state_noti_err = AdsSyncDelDeviceNotificationReq(
+                raw_address, 
+                self.ads_symbol_table_notification_handle 
+            );
+
+            if state_noti_err != 0 {
+                log::error!("Failed to remove ADS symbol_table notification callbacks: {}", state_noti_err);
+            }            
+            else {
+                log::info!("Removed ADS State notification callback successfully.");
+            }
+
+
+        }
+
+    }
+
 
 
     /// Upload and buffer all available symbols from the controller.
@@ -1316,10 +1429,13 @@ impl AdsClient {
 
 
         
-        if let Ok(_) = get_registered_symbol_by_name(symbol_name) {
-            // already registered. Do nothing.
-            log::info!("Symbol {} is already registerd.", symbol_name );
-            return Ok(())
+        if let Ok(item) = get_registered_symbol_by_name(symbol_name) {
+
+            if item.notification_handle != 0  {
+                // already registered. Do nothing.
+                log::info!("Symbol {} is already registerd.", symbol_name );
+                return Ok(())
+            }
         }
 
 
@@ -1444,7 +1560,14 @@ impl AdsClient {
                 }
         
             },
-            Err(err) => return Err(err)
+            Err(err) => {
+
+                if let Err(err) = remove_registered_symbol_by_name(symbol_name) {
+                    error!("Failed to remove notification symbol from local registry: {}", err);
+                }                
+                
+                return Err(err)
+            }
         }
 
     }
@@ -1460,6 +1583,9 @@ impl AdsClient {
 
             if let Err(err) = self.unregister_symbol(&item.name) {
                 log::error!("Failed to unregister symbol {} : {}", item.name, err);
+                
+                // We still need to remove it from our interal list, or we'll loop here endlessly.
+                let _ = remove_registered_symbol_by_name(&item.name);
             }
             else {
                 log::info!("Unregistered symbol {}", item.name);
@@ -1467,6 +1593,55 @@ impl AdsClient {
             
         }
     }
+
+
+    /// Re-register notifications for all symbols registered with the ADS Router.
+    /// This becomes necessary if the symbol table changes.
+    pub fn reregister_all_symbols(&mut self) {
+
+        if self.symbol_reregistration_count > 0 {
+            let mut items : Vec<String> = Vec::new();
+
+            {
+                // Build a list of symbol names. We can't hold the mutex while registering and unregistering
+                // symbols, or we'll deadlock.
+                let guard = SYMBOL_MANAGER.registered_symbols.lock().unwrap();
+
+                for item in guard.iter() {
+                    items.push(item.name.clone());
+                }
+            }
+
+
+            // Upload the latest information on the symbol table.
+            match self.upload_all_symbols() {
+                Ok(_) => {
+                    // Now loop through the symbol names and re-register.
+                    for item in items {
+                        if let Err(_) = self.unregister_symbol(&item) {
+                            let _ = remove_registered_symbol_by_name(&item);              
+                        }
+
+                        if let Err(err) = self.register_symbol(&item) {
+                            log::error!("Failed to re-register symbol {} : {}", item, err);                
+                        }
+                        else {
+                            log::info!("Re-registered symbol {}", item);
+                        }            
+                
+                    }                
+                },
+                Err(err) => {
+                    log::error!("Re-register failed: could not upload symbol table: {}", err);
+                    log::error!("Reconnection is required.");
+                }
+            }
+        }
+
+        self.symbol_reregistration_count += 1;
+
+
+    }    
 
 
 }
@@ -1739,6 +1914,79 @@ unsafe fn handle_ads_router_callback(
 
 }
 
+
+
+
+
+
+
+/// Callback from the 32-bit Beckhoff Ads DLL signalling a change in the target state.
+/// Usually, this means the PLC changed its run state.
+/// 
+/// # Arguments
+/// * `pAddr` - The AMS address of the controller sending the data.
+/// * `pNotification` - A structure containing the event data.
+/// * `hUser` - An id for the adsclient instance that registered this callback. 
+/// 
+#[cfg(target_arch = "x86")]
+unsafe extern "stdcall" fn ads_symbol_table_callback(
+    pAddr: *mut AmsAddr,
+    pNotification: *mut AdsNotificationHeader,
+    hUser: ::std::os::raw::c_ulong
+) {
+    ads_symbol_table_callback(pAddr, pNotification, hUser);
+}
+
+
+/// Callback from the 32-bit Beckhoff Ads DLL signalling a change in the target state.
+/// Usually, this means the PLC changed its run state.
+/// 
+/// # Arguments
+/// * `pAddr` - The AMS address of the controller sending the data.
+/// * `pNotification` - A structure containing the event data.
+/// * `hUser` - An id for the adsclient instance that registered this callback. 
+/// 
+#[cfg(target_arch = "x86_64")]
+unsafe extern "C" fn ads_symbol_table_callback(
+    pAddr: *mut AmsAddr,
+    pNotification: *mut AdsNotificationHeader,
+    hUser: ::std::os::raw::c_ulong
+) {
+    handle_ads_symbol_table_callback(pAddr, pNotification, hUser);
+}
+
+
+/// Callback when the state of the ADS Router has changed. This is a global event, as
+/// the Router is the hub connecting us to all targets, not just the particular client instance.
+unsafe fn handle_ads_symbol_table_callback(
+    _pAddr: *mut AmsAddr,
+    _pNotification: *mut AdsNotificationHeader,
+    _hUser: ::std::os::raw::c_ulong
+) {   
+
+    let global_sender = SYMBOL_MANAGER.sender.lock().unwrap();
+
+    for i in 0 .. global_sender.len() {
+
+        let dcei = RouterNotificationEventInfo {
+            event_type : EventInfoType::SymbolTableChange,
+            id : 0,
+            data : Vec::new()
+        };
+
+        match global_sender[i].try_send(dcei) {
+            Ok(_) => {},
+            Err(err) => {
+                log::error!("Failed to send on CHANNEL for ADS SYMBOL TABLE CHANGE: {}", err);
+            } 
+        }
+            
+    }
+
+
+
+
+}
 
 
 

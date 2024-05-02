@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp. All Rights Reserved.
 // Created Date: 2024-04-06 10:24:11
 // -----
-// Last Modified: 2024-05-02 06:38:34
+// Last Modified: 2024-05-02 08:54:59
 // -----
 // 
 //
@@ -328,6 +328,10 @@ async fn main() {
                                     RouterState::Unknown => log::info!("Router is in an unknown state."),
                                 }
                             },
+                            twincatads_rs::client::client_types::EventInfoType::SymbolTableChange => {
+                                log::info!("The Symbol Table has changed in the target device.");
+                                client.reregister_all_symbols();
+                            },                            
                         }
 
 

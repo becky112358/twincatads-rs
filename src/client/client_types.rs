@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:17:55
 // -----
-// Last Modified: 2024-04-18 08:48:49
+// Last Modified: 2024-05-02 07:47:16
 // -----
 // 
 //
@@ -40,7 +40,10 @@ pub enum EventInfoType {
     /// The state of the ADS Router has changed. The ADS Router is the pipeline to the targets.
     /// Note that Router callbacks will only be issued when the Router state changes, and there
     /// will be no initial callback when the connection is made, unlike other notification types.
-    RouterState = 3
+    RouterState = 3,
+    /// The state of the symbol table in the target device has changed. 
+    /// This requires unregistering and re-registering all handles and notifications.
+    SymbolTableChange = 10,
 }
 
 /// Stores the event details from a notification from
@@ -150,6 +153,16 @@ impl AdsClientNotification {
             timestamp : Instant::now(),
             name: String::new(),
             value: VariantValue::from(state)
+        };
+    }    
+
+    /// Creates an event that represents a change to the symbol table.
+    pub fn new_symbol_table() -> Self {
+        return Self { 
+            event_type : EventInfoType::SymbolTableChange,
+            timestamp : Instant::now(),
+            name: String::new(),
+            value: VariantValue::Null
         };
     }    
 
