@@ -1460,7 +1460,7 @@ impl AdsClient {
 
             
             // unit = 100ns, 10msec = 100000        
-            let cycle_time_ns = cycle_time_ms * 1000;
+            let cycle_time_ns = cycle_time_ms * 10000;
 
             let symbol_data_type;
             if let Ok(id) = AdsDataTypeId::try_from(symbol.type_id) {
