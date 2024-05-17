@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:17:55
 // -----
-// Last Modified: 2024-05-02 07:47:16
+// Last Modified: 2024-05-17 07:03:10
 // -----
 // 
 //
@@ -175,7 +175,8 @@ pub struct RegisteredSymbol {
     pub handle : u32,
     pub notification_handle : u32,
     pub name : String,
-    pub data_type_id : AdsDataTypeId
+    pub data_type_id : AdsDataTypeId,
+    pub options : serde_json::Map<String, serde_json::Value>
 }
 
 

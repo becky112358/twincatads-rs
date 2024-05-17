@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp. All Rights Reserved.
 // Created Date: 2024-04-06 10:24:11
 // -----
-// Last Modified: 2024-05-02 08:54:59
+// Last Modified: 2024-05-17 07:11:43
 // -----
 // 
 //
@@ -229,15 +229,15 @@ async fn main() {
 
 
     
-
+    let options : serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
     
-    if let Err(err) = client.register_symbol(NOTIFY_TAG) {
+    if let Err(err) = client.register_symbol(NOTIFY_TAG, &options) {
         error!("Failed to register symbol: {}", err);
     }
     else {
 
         log::info!("Testing registering a symbol a second time...");
-        if let Err(err) = client.register_symbol(NOTIFY_TAG) {
+        if let Err(err) = client.register_symbol(NOTIFY_TAG, &options) {
             error!("Unexpected error when registering symbol should have been ignored: {}", err);
         }
         else {

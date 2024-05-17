@@ -1425,9 +1425,11 @@ impl AdsClient {
 
     /// Register a symbol for on-data-change notification.
     /// Returns true if successful, false if not.
-    pub fn register_symbol(&mut self, symbol_name : &str) -> Result<(), anyhow::Error> {
-
-
+    pub fn register_symbol(
+        &mut self, 
+        symbol_name : &str,
+        options : &serde_json::Map<String, serde_json::Value>
+    ) -> Result<(), anyhow::Error> {
         
         if let Ok(item) = get_registered_symbol_by_name(symbol_name) {
 
@@ -1441,6 +1443,24 @@ impl AdsClient {
 
         if let Ok(symbol) = self.symbol_collection.get_symbol_info(symbol_name) {
             
+            // Cycle time determines the maximum update frequency for a registered symbol.
+            // For symbols that change constantly, like motion position or load cell readings,
+            // cycle time should be increased to avoid crushing the user interface.
+            let mut cycle_time_ms : u32 = 50;
+
+            if options.contains_key("cycle_time") {
+                if let Some(val) = options["cycle_time"].as_u64() {
+                    cycle_time_ms = val as u32;
+                }
+            }
+
+            if cycle_time_ms < 10 {
+                cycle_time_ms = 10;
+            }
+
+            
+            // unit = 100ns, 10msec = 100000        
+            let cycle_time_ns = cycle_time_ms * 1000;
 
             let symbol_data_type;
             if let Ok(id) = AdsDataTypeId::try_from(symbol.type_id) {
@@ -1457,7 +1477,7 @@ impl AdsClient {
             // Bindgen somehow flubbed the generation of the nCycleTime member, and turned it into
             // a union.
             //
-            let nCycleTime = AdsNotificationAttrib__bindgen_ty_1 {nCycleTime: 500000}; // unit = 100ns, 10msec = 100000
+            let nCycleTime = AdsNotificationAttrib__bindgen_ty_1 {nCycleTime: cycle_time_ns}; // unit = 100ns, 10msec = 100000
 
             let mut attrib = AdsNotificationAttrib {
                 cbLength : symbol.size,
@@ -1510,7 +1530,8 @@ impl AdsClient {
                         handle: handle, 
                         notification_handle: notification_handle, 
                         name: symbol_name.to_string(),
-                        data_type_id: symbol_data_type
+                        data_type_id: symbol_data_type,
+                        options : options.clone()
                     });
 
                     return Ok(());
@@ -1600,7 +1621,7 @@ impl AdsClient {
     pub fn reregister_all_symbols(&mut self) {
 
         if self.symbol_reregistration_count > 0 {
-            let mut items : Vec<String> = Vec::new();
+            let mut items : Vec<(String, serde_json::Map<String,serde_json::Value>)> = Vec::new();
 
             {
                 // Build a list of symbol names. We can't hold the mutex while registering and unregistering
@@ -1608,7 +1629,7 @@ impl AdsClient {
                 let guard = SYMBOL_MANAGER.registered_symbols.lock().unwrap();
 
                 for item in guard.iter() {
-                    items.push(item.name.clone());
+                    items.push((item.name.clone(), item.options.clone()));
                 }
             }
 
@@ -1618,15 +1639,15 @@ impl AdsClient {
                 Ok(_) => {
                     // Now loop through the symbol names and re-register.
                     for item in items {
-                        if let Err(_) = self.unregister_symbol(&item) {
-                            let _ = remove_registered_symbol_by_name(&item);              
+                        if let Err(_) = self.unregister_symbol(&item.0) {
+                            let _ = remove_registered_symbol_by_name(&item.0);              
                         }
 
-                        if let Err(err) = self.register_symbol(&item) {
-                            log::error!("Failed to re-register symbol {} : {}", item, err);                
+                        if let Err(err) = self.register_symbol(&item.0, &item.1) {
+                            log::error!("Failed to re-register symbol {} : {}", item.0, err);                
                         }
                         else {
-                            log::info!("Re-registered symbol {}", item);
+                            log::info!("Re-registered symbol {}", item.0);
                         }            
                 
                     }                
