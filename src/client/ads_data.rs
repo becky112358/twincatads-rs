@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:11:58
 // -----
-// Last Modified: 2024-04-27 12:10:36
+// Last Modified: 2024-05-21 10:46:18
 // -----
 // 
 //
@@ -113,8 +113,11 @@ pub fn deserialize_structure(
 
         let mut map : IndexMap<String, VariantValue> = IndexMap::new();
 
-        let mut offset: usize = 0;
         for field in &dt.fields {
+
+            // We have to use the specified field offset uploaded from the device. The
+            // controller doesn't always align bytes as expected; it will add "dummy" bytes.
+            let offs = field.offset as usize;
             
             if let Some(field_info) = symbol_collection.data_types.get(&field.type_name) {
                 
@@ -129,12 +132,12 @@ pub fn deserialize_structure(
                     match AdsDataTypeId::try_from(field.type_id) {
                         Ok(field_type_id) => {
 
-                            //log::debug!("Field {} is a structure with size {} [{}]", field.name, field.size, field_info.size);
-
+                            // log::debug!("Field {} is a structure with size {} [{}]", field.name, field.size, field_info.size);
+                            
                             if let Some(val) = deserialize_structure(
                                 symbol_collection, 
                                 field, 
-                                &bytes[offset..offset + field.size as usize].to_vec(), 
+                                &bytes[offs..offs + field.size as usize].to_vec(), 
                                 &field_type_id
                             ) {
                                 map.insert(field.name.clone(), val);
@@ -163,7 +166,7 @@ pub fn deserialize_structure(
                             let arr = deserialize_array(
                                 symbol_collection, 
                                 field, 
-                                &bytes[offset..offset + field.size as usize].to_vec(), 
+                                &bytes[offs..offs + field.size as usize].to_vec(), 
                                 &field_type_id
                             );
 
@@ -184,15 +187,14 @@ pub fn deserialize_structure(
                 else {
                     // plain old data
 
-                    //log::debug!("P.O.D. Field type {}\n\t{:?}", field.type_id, symbol_info);
-
+                    // log::debug!("P.O.D. Field offset {} type {}\n\t{:?}", field.offset, field.type_id, symbol_info);
 
                     match AdsDataTypeId::try_from(field.type_id) {
                         Ok(field_type_id) => {
                             if let Some(val) = deserialize_value(
                                 symbol_collection, 
                                 symbol_info, 
-                                &bytes[offset..offset + field.size as usize].to_vec(), 
+                                &bytes[offs..offs + field.size as usize].to_vec(), 
                                 &field_type_id
                             ) {
                                 map.insert(field.name.clone(), val);
@@ -206,9 +208,6 @@ pub fn deserialize_structure(
                 }
 
             }
-
-
-            offset += field.size as usize;
 
 
         }
@@ -496,10 +495,21 @@ pub fn serialize_struct(
                 for (key, val) in boxed_map.iter() {
 
                     if count < dt.fields.len() {
-                        let field = &dt.fields[count];
+                        let field = &dt.fields[count];                                            
 
                         match serialize(symbol_collection, field, val) {
                             Ok(bytes) => {
+                                let offs = field.offset as usize;
+                                if all_bytes.len() < offs {
+                                    // The structure has been padded with "dummy" bytes in the controller.
+                                    // Adjust.
+                                    // Calculate the number of padding bytes needed
+                                    let padding_size = offs - all_bytes.len();
+                                    
+                                    // Extend all_bytes with the calculated number of zero bytes
+                                    all_bytes.extend(std::iter::repeat(0).take(padding_size));                                    
+                                }
+
                                 all_bytes.extend(bytes);
                             },
                             Err(err) => {
@@ -562,7 +572,65 @@ pub fn serialize(
             ret.resize(symbol_info.size as usize, 0);
             return Ok(ret);
         },
-        _ =>  return value.get_bytes()
+        _ =>  return serialize_value(value)
     }    
+    
+}
+
+
+
+
+/// Serialize a POD value into a byte stream that can be transmitted
+/// over a connection.
+fn serialize_value(value : &VariantValue) -> Result<Vec<u8>, anyhow::Error> {
+
+
+    match &*value {
+        VariantValue::Null => {
+            return Err(anyhow!("Cannot serialize a NULL value!"));
+        },
+        VariantValue::Bit (s) =>{
+            if *s {
+                return Ok(vec![1]);
+            }
+            else {
+                return Ok(vec![0]);
+            }
+        },  
+        VariantValue::Byte (s) =>{
+            return Ok(vec![*s]);
+        },  
+        VariantValue::SByte (s) =>{
+            return Ok(vec![*s as u8]);
+        },  
+        VariantValue::Int16 (s) =>{
+            return Ok(s.to_le_bytes().to_vec());
+        },  
+        VariantValue::UInt16 (s) =>{
+            return Ok(s.to_le_bytes().to_vec());
+        },  
+        VariantValue::Int32 (s) =>{
+            return Ok(s.to_le_bytes().to_vec());
+        },  
+        VariantValue::UInt32 (s) =>{
+            return Ok(s.to_le_bytes().to_vec());
+        },  
+        VariantValue::Int64 (s) =>{
+            return Ok(s.to_le_bytes().to_vec());
+        },  
+        VariantValue::UInt64 (s) =>{
+            return Ok(s.to_le_bytes().to_vec());
+        },  
+        VariantValue::Real32 (s) =>{
+            return Ok(s.to_le_bytes().to_vec());
+        },  
+        VariantValue::Real64 (s) =>{
+            return Ok(s.to_le_bytes().to_vec());
+        },  
+        _ => {
+            return Err(anyhow!("This function not intended for all but POD types."));
+        }
+    
+    }
     
 }

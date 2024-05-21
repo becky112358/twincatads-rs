@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp. All Rights Reserved.
 // Created Date: 2024-04-06 10:24:11
 // -----
-// Last Modified: 2024-05-17 07:11:43
+// Last Modified: 2024-05-21 10:47:35
 // -----
 // 
 //
@@ -63,19 +63,19 @@ async fn main() {
     }
 
 
-    if let Err(err) = client.write_symbol_variant_value("GNV.nClubBackPosition", &VariantValue::UInt32(855)) {
-        log::error!("Failed to write symbol: {}", err);
-    }
-    else {
-        log::info!("Successfully wrote symbol.");
-    }
+    // if let Err(err) = client.write_symbol_variant_value("GNV.nClubBackPosition", &VariantValue::UInt32(855)) {
+    //     log::error!("Failed to write symbol: {}", err);
+    // }
+    // else {
+    //     log::info!("Successfully wrote symbol.");
+    // }
 
-    if let Err(err) = client.write_symbol_json_value("GNV.nClubBackPosition", &serde_json::json!(865)) {
-        log::error!("Failed to write symbol: {}", err);
-    }
-    else {
-        log::info!("Successfully wrote symbol.");
-    }
+    // if let Err(err) = client.write_symbol_json_value("GNV.nClubBackPosition", &serde_json::json!(865)) {
+    //     log::error!("Failed to write symbol: {}", err);
+    // }
+    // else {
+    //     log::info!("Successfully wrote symbol.");
+    // }
 
 
 
@@ -158,26 +158,26 @@ async fn main() {
 
 
     // Practical test of S_SeqeuenceItem array in our Club Durability systems.
-    let js_struct_array= serde_json::json!([
-        {"fX" : 10.123,"fY" : 1,"fPsi" : 1, "nHits" : 1, "bStop" : true},
-        {"fX" : 9.456,"fY" : 2,"fPsi" : 2, "nHits" : 2, "bStop" : false},
-        {"fX" : 8.789,"fY" : 3,"fPsi" : 3, "nHits" : 3, "bStop" : true},
-        {"fX" : 7.234,"fY" : 4,"fPsi" : 4, "nHits" : 4, "bStop" :false},
-        {"fX" : 6,"fY" : 5,"fPsi" : 5, "nHits" : 5, "bStop" :true},
-        {"fX" : 5.567,"fY" : 6,"fPsi" : 6, "nHits" : 6, "bStop" :false},
-        {"fX" : 4.890,"fY" : 7,"fPsi" : 7, "nHits" : 7, "bStop" : true},
-        {"fX" : 3,"fY" : 8,"fPsi" : 8, "nHits" : 8, "bStop" :false},
-        {"fX" : 2.1,"fY" : 9,"fPsi" : 9, "nHits" : 9, "bStop" : true},
-        {"fX" : 1.0101,"fY" : 10,"fPsi" : 10, "nHits" : 10, "bStop" :false},
-    ]);
+    // let js_struct_array= serde_json::json!([
+    //     {"fX" : 10.123,"fY" : 1,"fPsi" : 1, "nHits" : 1, "bStop" : true},
+    //     {"fX" : 9.456,"fY" : 2,"fPsi" : 2, "nHits" : 2, "bStop" : false},
+    //     {"fX" : 8.789,"fY" : 3,"fPsi" : 3, "nHits" : 3, "bStop" : true},
+    //     {"fX" : 7.234,"fY" : 4,"fPsi" : 4, "nHits" : 4, "bStop" :false},
+    //     {"fX" : 6,"fY" : 5,"fPsi" : 5, "nHits" : 5, "bStop" :true},
+    //     {"fX" : 5.567,"fY" : 6,"fPsi" : 6, "nHits" : 6, "bStop" :false},
+    //     {"fX" : 4.890,"fY" : 7,"fPsi" : 7, "nHits" : 7, "bStop" : true},
+    //     {"fX" : 3,"fY" : 8,"fPsi" : 8, "nHits" : 8, "bStop" :false},
+    //     {"fX" : 2.1,"fY" : 9,"fPsi" : 9, "nHits" : 9, "bStop" : true},
+    //     {"fX" : 1.0101,"fY" : 10,"fPsi" : 10, "nHits" : 10, "bStop" :false},
+    // ]);
 
 
-    if let Err(err) = client.write_symbol_json_value("GM.stSequenceCollection.aData", &js_struct_array) {
-        log::error!("An error occurred writing array of struct from json: {}", err);
-    }
-    else {
-        log::info!("Successfully wrote out JSON array of struct.");
-    }
+    // if let Err(err) = client.write_symbol_json_value("GM.stSequenceCollection.aData", &js_struct_array) {
+    //     log::error!("An error occurred writing array of struct from json: {}", err);
+    // }
+    // else {
+    //     log::info!("Successfully wrote out JSON array of struct.");
+    // }
     
     // // Write a value to a symbol in the PLC
     // if let Err(err) = client.write_symbol_string_value(
@@ -217,9 +217,22 @@ async fn main() {
     //     Ok(val) => info!("STRING VALUE: {:?}", val.to_string()),
     //     Err(err) => error!("I failed to read the string tag: {}", err)
     // }    
+
+
+    if let Ok(res) = client.read_symbol_by_name("GIO.axisPress.stMotionSettings") {
+        log::debug!("READ STRUCTURE: {:?}", res);
+    }
     
 
+    // let tst = serde_json::json!({"eMoveType": 0, "fAccel": 100, "fDecel": 100, "fLoad": 0, "fPosition": 88, "fSecondarySpeed": 0, "fSpeed": 6});
+    let tst = serde_json::json!({"eMoveType": 0, "fAccel": 1, "fDecel": 2, "fLoad": 3, "fPosition": 4, "fSecondarySpeed": 5, "fSpeed": 6});
 
+    if let Err(err) = client.write_symbol_json_value("GIO.axisPress.stMotionSettings", &tst) {
+        log::error!("Error writing motion structure from JSON: {}", err);
+    }
+    else {
+        log::info!("Successfully wrote motion structure from JSON.");
+    }
 
 
     // "GM.stSequenceCollection"; // "GM.fbData.stCollection.nNumRows"; // GM.stSequenceCollection.nLoopSet

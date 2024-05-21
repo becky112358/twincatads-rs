@@ -1121,6 +1121,9 @@ impl AdsClient {
     pub fn read_symbol_by_name(&mut self, symbol_name : &str) -> Result<variant::VariantValue, anyhow::Error>  {
         match self.read_raw_bytes(symbol_name) {
             Ok(buffer) => {
+
+                //log::debug!("RES {} BUFFER: {:?}", buffer.len(), buffer);
+
                 let symbol_information = self.get_symbol_entry(symbol_name);
                 match symbol_information {
                     Ok(info) => {
@@ -1293,6 +1296,10 @@ impl AdsClient {
                 }
             } else {
                 if let Ok(type_id) = AdsDataTypeId::try_from(dt.data_type) {
+
+
+                    //log::debug!("type_id: {:?}", type_id);
+
                     match type_id {
                         AdsDataTypeId::Void => Err(anyhow::anyhow!("Cannot write to a void type value")),
                         AdsDataTypeId::Int8 => json_val.as_i64().map(|x| VariantValue::SByte(x as i8)).ok_or_else(|| anyhow::anyhow!("Invalid value for Int8")),
@@ -1303,8 +1310,24 @@ impl AdsClient {
                         AdsDataTypeId::UInt32 => json_val.as_u64().map(|x| VariantValue::UInt32(x as u32)).ok_or_else(|| anyhow::anyhow!("Invalid value for UInt32")),
                         AdsDataTypeId::Int64 => json_val.as_i64().map(VariantValue::Int64).ok_or_else(|| anyhow::anyhow!("Invalid value for Int64")),
                         AdsDataTypeId::UInt64 => json_val.as_u64().map(VariantValue::UInt64).ok_or_else(|| anyhow::anyhow!("Invalid value for UInt64")),
-                        AdsDataTypeId::Real32 => json_val.as_f64().map(|x| VariantValue::Real32(x as f32)).ok_or_else(|| anyhow::anyhow!("Invalid value for Real32")),
-                        AdsDataTypeId::Real64 => json_val.as_f64().map(VariantValue::Real64).ok_or_else(|| anyhow::anyhow!("Invalid value for Real64")),
+                        AdsDataTypeId::Real32 => {
+
+                            if let Some(val) = json_val.as_f64() {
+                                return Ok(VariantValue::Real32(val as f32));
+                            }
+                            else {
+                                return Err(anyhow::anyhow!("Invalid value for Real32"));
+                            }
+                        }, 
+                        AdsDataTypeId::Real64 => {
+
+                            if let Some(val) = json_val.as_f64() {
+                                return Ok(VariantValue::Real64(val));
+                            }
+                            else {
+                                return Err(anyhow::anyhow!("Invalid value for Real32"));
+                            }
+                        },
                         AdsDataTypeId::String | AdsDataTypeId::WString => json_val.as_str().map(|s| VariantValue::String(s.to_string())).ok_or_else(|| anyhow::anyhow!("Invalid value for String types")),
                         AdsDataTypeId::Bit => json_val.as_bool().map(VariantValue::Bit).ok_or_else(|| anyhow::anyhow!("Invalid value for bool")),
                         AdsDataTypeId::BigType => {
@@ -1322,6 +1345,7 @@ impl AdsClient {
                         },
                         _ => Err(anyhow::anyhow!("Unsupported data type ID")),
                     }
+
 
                 }
                 else {
@@ -1408,7 +1432,7 @@ impl AdsClient {
 
         match self.symbol_collection.get_symbol_info(symbol_name) {
             Ok(info) => {
-                match self.convert_json_to_variant(&value, &info) {
+                match self.convert_json_to_variant(&value, &info) {                    
                     Ok(var) => {
                         return self.write_symbol_variant_value(symbol_name, &var);
                     },

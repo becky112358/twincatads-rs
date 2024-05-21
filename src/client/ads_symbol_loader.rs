@@ -36,7 +36,9 @@ pub struct AdsSymbolInfo {
     pub index_offset: u32,
     /// Size of symbol, in bytes. 0 = bit.
     pub size: u32,
-
+    /// Offset of dataitem in parent datatype ( in bytes )
+    pub offset : u32,
+     
     /// ADS Data Type ID of the symbol
     pub type_id: u32,
     /// ADS Data Type of symbol.
@@ -59,6 +61,7 @@ impl AdsSymbolInfo {
             group_index: 0,
             index_offset: 0,
             size: 0,
+            offset : 0,
             name: String::new(),
             type_id: 0,
             type_name: String::new(),
@@ -481,12 +484,13 @@ fn parse_datatype_entry_field(
             group_index: 0,
             index_offset: 0,
             size: item.size,
+            offset : item.offs,
             type_id: item.dataType,
             type_name: String::new(),
             comment: String::new(),
             is_structure: item.subItems > 0,
             is_array: false,
-            array_dimensions: Vec::new(),
+            array_dimensions: Vec::new(),            
         };
 
         let type_start = name_end + 1;
