@@ -2,7 +2,7 @@
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 // Created Date: 2024-04-09 08:11:58
 // -----
-// Last Modified: 2024-05-21 10:46:18
+// Last Modified: 2024-08-15 06:44:34
 // -----
 // 
 //
@@ -251,45 +251,63 @@ pub fn deserialize_array(
         let mut arr = Vec::new();
 
         let mut offset = 0;
-
-        for col in &symbol_info.array_dimensions {            
-
-            let mut array_elements = Vec::new();
-    
-            for _i in 0 .. *col {
-
-                if let Some(val) = deserialize_value(
-                    symbol_collection, 
-                    symbol_info, 
-                    &bytes[offset..offset + inc as usize].to_vec(),
-                    &type_id
-                ) {
-                    array_elements.push(val);
-                }
-                else {
-                    array_elements.push(VariantValue::Null);
-                }
-
-                offset += inc;
-            }
-    
-            arr.push(array_elements);
-        }            
-
-
-        if arr.len() > 1 {
-            // 2D array
-            let arr1 = VariantValue::Array(arr[0].clone());
-            let arr2 = VariantValue::Array(arr[1].clone());
-            return Some(VariantValue::Array(vec![arr1, arr2]));
-        }
-        else if arr.len() == 1 {
-            return Some(VariantValue::Array(arr[0].clone()));
-        }
-        else {
-            return None;
-        }
         
+        match symbol_info.array_dimensions.len() {
+            1 => {
+                // Handle 1D array
+                let length = symbol_info.array_dimensions[0];
+
+                for _ in 0..length {
+                    if offset + inc > bytes.len() {
+                        arr.push(VariantValue::Null);
+                    } else if let Some(val) = deserialize_value(
+                        symbol_collection,
+                        symbol_info,
+                        &bytes[offset..offset + inc].to_vec(),
+                        &type_id,
+                    ) {
+                        arr.push(val);
+                    } else {
+                        arr.push(VariantValue::Null);
+                    }
+                    offset += inc;
+                }
+
+                return Some(VariantValue::Array(arr));
+            }
+            2 => {
+                // Handle 2D array
+                let rows = symbol_info.array_dimensions[0];
+                let cols = symbol_info.array_dimensions[1];
+
+                for _ in 0..rows {
+                    let mut row_elements = Vec::new();
+
+                    for _ in 0..cols {
+                        if offset + inc > bytes.len() {
+                            row_elements.push(VariantValue::Null);
+                        } else if let Some(val) = deserialize_value(
+                            symbol_collection,
+                            symbol_info,
+                            &bytes[offset..offset + inc].to_vec(),
+                            &type_id,
+                        ) {
+                            row_elements.push(val);
+                        } else {
+                            row_elements.push(VariantValue::Null);
+                        }
+
+                        offset += inc;
+                    }
+
+                    arr.push(VariantValue::Array(row_elements));
+                }
+
+                return Some(VariantValue::Array(arr));
+            }
+            _ => return None, // 2D array is the limit in Codesys.
+        }
+                
     }
     else {
         return None;
