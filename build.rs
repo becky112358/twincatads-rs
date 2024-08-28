@@ -1,8 +1,3 @@
-/*
- * (C) Copyright 2022 Automated Design Corp. All Rights Reserved.
- * Author: Thomas C. Bitsky Jr. (support@automateddesign.com)
- */
-
 extern crate bindgen;
 
 use std::env;

@@ -1,12 +1,3 @@
-//
-// Copyright (C) 2024 Automated Design Corp. All Rights Reserved.
-// Created Date: 2024-04-06 10:24:11
-// -----
-// Last Modified: 2024-08-15 06:45:25
-// -----
-//
-//
-
 //! Quick communications test to evalutate operation of the library.
 //! We include a test project in the source directory that can be
 //! downloaded to a TC PLC instance for use in testing this

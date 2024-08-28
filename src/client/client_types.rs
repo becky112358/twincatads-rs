@@ -1,4 +1,3 @@
-// Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
 use std::fmt;
 use std::time::{Duration, Instant, SystemTime};
 

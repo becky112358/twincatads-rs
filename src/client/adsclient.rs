@@ -1,8 +1,6 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
-// (C) Copyright 2022-2024 Automated Design Corp. All Rights Reserved.
-
 //! ADS Client that wraps the API from the Beckhoff DLL into a convenient
 //! struct with commonly-used features. Includes registering and handling
 //! notifications from the target, serilization and deserialization of
