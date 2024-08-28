@@ -182,7 +182,7 @@ fn get_new_id() -> u32 {
 ///
 /// Simple example:
 /// ```
-/// let (mut client, rx) = AdsClient::new();
+/// let (mut client, rx) = twincatads_rs::client::AdsClient::new();
 /// // Supply AMS Address. If not set, localhost is used.
 /// client.set_address("192.168.127.1.1.1");
 /// // Supply ADS port. If not set, the default of 851 is used.
@@ -202,15 +202,16 @@ fn get_new_id() -> u32 {
 ///
 /// // On-change notification
 /// const NOTIFY_TAG :&str = "GM.fReal";
-///     
-/// if let Err(err) = client.register_symbol(NOTIFY_TAG) {
+///
+/// let options = serde_json::Map::new();
+/// if let Err(err) = client.register_symbol(NOTIFY_TAG, &options) {
 ///     println!("Failed to register symbol: {}", err);
 /// }
 /// else {
 ///
 ///
 ///     // Listen for notifications
-///     thread::spawn(move || {
+///     std::thread::spawn(move || {
 ///
 ///         //
 ///         // When you call .iter() on a Receiver, you get an iterator that blocks waiting for new messages,
