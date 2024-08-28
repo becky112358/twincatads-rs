@@ -276,8 +276,16 @@ impl AdsSymbolCollection {
         // Extracts the portion of the symbol name up to the second period, if present.
         let processed_symbol_name = symbol_name.splitn(3, '.').collect::<Vec<&str>>();
         let valid_symbol_name = match processed_symbol_name.as_slice() {
-            [first, second, ..] => format!("{}.{}", first, second), // Join the first two segments
-            [single] => single.to_string(),                         // Only one segment, use as is
+            [first, second, ..] => {
+                let mut second = second.to_owned().to_owned();
+                if let Some(index) = second.find("[") {
+                    while second.len() > index {
+                        second.pop();
+                    }
+                }
+                format!("{}.{}", first, second) // Join the first two segments
+            }
+            [single] => single.to_string(), // Only one segment, use as is
             _ => {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
