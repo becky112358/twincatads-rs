@@ -1,11 +1,4 @@
-//
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
-// Created Date: 2024-04-09 08:11:58
-// -----
-// Last Modified: 2024-08-15 06:44:34
-// -----
-//
-//
 use std::convert::TryFrom;
 use std::io::{Error, ErrorKind};
 

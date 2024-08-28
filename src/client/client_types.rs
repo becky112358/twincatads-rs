@@ -1,11 +1,4 @@
-//
 // Copyright (C) 2024 Automated Design Corp.. All Rights Reserved.
-// Created Date: 2024-04-09 08:17:55
-// -----
-// Last Modified: 2024-05-17 07:03:10
-// -----
-//
-//
 use std::fmt;
 use std::time::{Duration, Instant, SystemTime};
 

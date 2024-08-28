@@ -1,6 +1,5 @@
 // (C) Copyright 2022 Automated Design Corp. All Rights Reserved.
 // Author: Thomas C. Bitsky Jr. (support@automateddesign.com)
-//
 
 //! Loads symbols from the remote controller dynamically, making it
 //! easier for a user program to automatically add groups/domains of
