@@ -19,17 +19,17 @@ extern crate lazy_static;
 // Pull in adcs client module.
 pub mod client;
 
-impl AmsNetId_ {
-    pub fn new() -> Self {
+impl Default for AmsNetId_ {
+    fn default() -> Self {
         let addr: [::std::os::raw::c_uchar; 6usize] = [0, 0, 0, 0, 0, 0];
         Self { b: addr }
     }
 }
 
-impl AmsAddr {
-    pub fn new() -> Self {
+impl Default for AmsAddr {
+    fn default() -> Self {
         Self {
-            netId: AmsNetId_::new(),
+            netId: AmsNetId_::default(),
             port: 851,
         }
     }
@@ -37,9 +37,9 @@ impl AmsAddr {
 
 /// Structure containing information about a symbol in the PLC that
 /// has been retrieved back from the PLC.
-impl AdsSymbolEntry {
-    pub fn new() -> Self {
-        AdsSymbolEntry {
+impl Default for AdsSymbolEntry {
+    fn default() -> Self {
+        Self {
             entryLength: 0,
             iGroup: 0,
             iOffs: 0,
@@ -72,7 +72,7 @@ mod tests {
 
             println!("The ADS client port is {}", client_port);
 
-            let mut local_addr = AmsAddr::new();
+            let mut local_addr = AmsAddr::default();
 
             AdsGetLocalAddress(&mut local_addr);
 

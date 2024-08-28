@@ -70,33 +70,33 @@ impl TryFrom<u32> for AdsDataTypeId {
 
 /// Convert a stream of bytes to a P.O.D. type that is compatible with
 /// ZeroCopy contraints. Doesn't work for dynamic types.
-pub fn value_from_bytes<T: FromBytes + Default>(bytes: &Vec<u8>) -> Option<T>
+pub fn value_from_bytes<T>(bytes: &Vec<u8>) -> Option<T>
 where
     T: Default + AsBytes + FromBytes, // ZeroCopy constraints
 {
-    return T::read_from(&*bytes);
+    T::read_from(&*bytes)
 }
 
 /// Convert a vector of bytes to a string and trims off suplerflous bytes
 /// sent by the PLC.
-pub fn vec_to_string(s: &Vec<u8>) -> Result<String, anyhow::Error> {
+pub fn vec_to_string(s: &[u8]) -> Result<String, anyhow::Error> {
     if let Some(end_index) = s.iter().position(|&c| c == 0x00) {
         match String::from_utf8(s[..end_index].to_vec()) {
-            Ok(ret) => return Ok(ret),
+            Ok(ret) => Ok(ret),
             Err(err) => Err(anyhow!("Failed to convert string: {}", err)),
         }
     } else {
-        return Err(anyhow!("String is not null-terminated."));
+        Err(anyhow!("String is not null-terminated."))
     }
 }
 
 pub fn deserialize_structure(
     symbol_collection: &AdsSymbolCollection,
     symbol_info: &AdsSymbolInfo,
-    bytes: &Vec<u8>,
+    bytes: &[u8],
     _type_id: &AdsDataTypeId,
 ) -> Option<VariantValue> {
-    if let Some(dt) = symbol_collection.get_fundamental_type_info(&symbol_info) {
+    if let Some(dt) = symbol_collection.get_fundamental_type_info(symbol_info) {
         let mut map: IndexMap<String, VariantValue> = IndexMap::new();
 
         for field in &dt.fields {
@@ -123,7 +123,7 @@ pub fn deserialize_structure(
                             if let Some(val) = deserialize_structure(
                                 symbol_collection,
                                 field,
-                                &bytes[offs..offs + field.size as usize].to_vec(),
+                                &bytes[offs..offs + field.size as usize],
                                 &field_type_id,
                             ) {
                                 map.insert(field.name.clone(), val);
@@ -154,7 +154,7 @@ pub fn deserialize_structure(
                             let arr = deserialize_array(
                                 symbol_collection,
                                 field,
-                                &bytes[offs..offs + field.size as usize].to_vec(),
+                                &bytes[offs..offs + field.size as usize],
                                 &field_type_id,
                             );
 
@@ -204,20 +204,20 @@ pub fn deserialize_structure(
             }
         }
 
-        return Some(VariantValue::Object(Box::new(map)));
+        Some(VariantValue::Object(Box::new(map)))
     } else {
         log::error!(
             "Failed to find structure type name: {}",
             symbol_info.type_name
         );
-        return None;
+        None
     }
 }
 
 pub fn deserialize_array(
     symbol_collection: &AdsSymbolCollection,
     symbol_info: &AdsSymbolInfo,
-    bytes: &Vec<u8>,
+    bytes: &[u8],
     type_id: &AdsDataTypeId,
 ) -> Option<VariantValue> {
     if let Some(symbol_dt) = symbol_collection.data_types.get(&symbol_info.type_name) {
@@ -249,7 +249,7 @@ pub fn deserialize_array(
                         symbol_collection,
                         symbol_info,
                         &bytes[offset..offset + inc].to_vec(),
-                        &type_id,
+                        type_id,
                     ) {
                         arr.push(val);
                     } else {
@@ -258,7 +258,7 @@ pub fn deserialize_array(
                     offset += inc;
                 }
 
-                return Some(VariantValue::Array(arr));
+                Some(VariantValue::Array(arr))
             }
             2 => {
                 // Handle 2D array
@@ -275,7 +275,7 @@ pub fn deserialize_array(
                             symbol_collection,
                             symbol_info,
                             &bytes[offset..offset + inc].to_vec(),
-                            &type_id,
+                            type_id,
                         ) {
                             row_elements.push(val);
                         } else {
@@ -288,12 +288,12 @@ pub fn deserialize_array(
                     arr.push(VariantValue::Array(row_elements));
                 }
 
-                return Some(VariantValue::Array(arr));
+                Some(VariantValue::Array(arr))
             }
-            _ => return None, // 2D array is the limit in Codesys.
+            _ => None, // 2D array is the limit in Codesys.
         }
     } else {
-        return None;
+        None
     }
 }
 
@@ -305,101 +305,41 @@ pub fn deserialize_value(
     type_id: &AdsDataTypeId,
 ) -> Option<VariantValue> {
     match type_id {
-        AdsDataTypeId::Void => return None,
-        AdsDataTypeId::Int8 => {
-            if let Some(val) = value_from_bytes::<i8>(bytes) {
-                return Some(VariantValue::from(val));
-            } else {
-                return None;
-            }
-        }
-        AdsDataTypeId::UInt8 => {
-            if let Some(val) = value_from_bytes::<u8>(bytes) {
-                return Some(VariantValue::from(val));
-            } else {
-                return None;
-            }
-        }
-        AdsDataTypeId::Int16 => {
-            if let Some(val) = value_from_bytes::<i16>(bytes) {
-                return Some(VariantValue::from(val));
-            } else {
-                return None;
-            }
-        }
-        AdsDataTypeId::UInt16 => {
-            if let Some(val) = value_from_bytes::<u16>(bytes) {
-                return Some(VariantValue::from(val));
-            } else {
-                return None;
-            }
-        }
-        AdsDataTypeId::Int32 => {
-            if let Some(val) = value_from_bytes::<i32>(bytes) {
-                return Some(VariantValue::from(val));
-            } else {
-                return None;
-            }
-        }
-        AdsDataTypeId::UInt32 => {
-            if let Some(val) = value_from_bytes::<u32>(bytes) {
-                return Some(VariantValue::from(val));
-            } else {
-                return None;
-            }
-        }
-        AdsDataTypeId::Int64 => {
-            if let Some(val) = value_from_bytes::<i64>(bytes) {
-                return Some(VariantValue::from(val));
-            } else {
-                return None;
-            }
-        }
-        AdsDataTypeId::UInt64 => {
-            if let Some(val) = value_from_bytes::<u64>(bytes) {
-                return Some(VariantValue::from(val));
-            } else {
-                return None;
-            }
-        }
-        AdsDataTypeId::Real32 => {
-            if let Some(val) = value_from_bytes::<f32>(bytes) {
-                return Some(VariantValue::from(val));
-            } else {
-                return None;
-            }
-        }
-        AdsDataTypeId::Real64 => {
-            if let Some(val) = value_from_bytes::<f64>(bytes) {
-                return Some(VariantValue::from(val));
-            } else {
-                return None;
-            }
-        }
+        AdsDataTypeId::Void => None,
+        AdsDataTypeId::Int8 => value_from_bytes::<i8>(bytes).map(VariantValue::from),
+        AdsDataTypeId::UInt8 => value_from_bytes::<u8>(bytes).map(VariantValue::from),
+        AdsDataTypeId::Int16 => value_from_bytes::<i16>(bytes).map(VariantValue::from),
+        AdsDataTypeId::UInt16 => value_from_bytes::<u16>(bytes).map(VariantValue::from),
+        AdsDataTypeId::Int32 => value_from_bytes::<i32>(bytes).map(VariantValue::from),
+        AdsDataTypeId::UInt32 => value_from_bytes::<u32>(bytes).map(VariantValue::from),
+        AdsDataTypeId::Int64 => value_from_bytes::<i64>(bytes).map(VariantValue::from),
+        AdsDataTypeId::UInt64 => value_from_bytes::<u64>(bytes).map(VariantValue::from),
+        AdsDataTypeId::Real32 => value_from_bytes::<f32>(bytes).map(VariantValue::from),
+        AdsDataTypeId::Real64 => value_from_bytes::<f64>(bytes).map(VariantValue::from),
         AdsDataTypeId::String => {
             if let Ok(val) = vec_to_string(bytes) {
-                return Some(VariantValue::from(val));
+                Some(VariantValue::from(val))
             } else {
-                return None;
+                None
             }
         }
-        AdsDataTypeId::WString => return None,
-        AdsDataTypeId::Real80 => return None,
+        AdsDataTypeId::WString => None,
+        AdsDataTypeId::Real80 => None,
         AdsDataTypeId::Bit => {
             if let Some(val) = value_from_bytes::<i8>(bytes) {
                 if val == 0 {
-                    return Some(VariantValue::from(false));
+                    Some(VariantValue::from(false))
                 } else {
-                    return Some(VariantValue::from(true));
+                    Some(VariantValue::from(true))
                 }
             } else {
-                return None;
+                None
             }
         }
         AdsDataTypeId::BigType => {
-            return deserialize_structure(symbol_collection, symbol_info, bytes, &type_id);
+            deserialize_structure(symbol_collection, symbol_info, bytes, type_id)
         }
-        AdsDataTypeId::MaxTypes => return None, // Not an actual type; just a marker for maximum built-in types
+        AdsDataTypeId::MaxTypes => None, // Not an actual type; just a marker for maximum built-in types
     }
 }
 
@@ -411,9 +351,9 @@ pub fn deserialize(
     type_id: &AdsDataTypeId,
 ) -> Option<VariantValue> {
     if symbol_info.is_array {
-        return deserialize_array(symbol_collection, symbol_info, bytes, &type_id);
+        deserialize_array(symbol_collection, symbol_info, bytes, type_id)
     } else {
-        return deserialize_value(symbol_collection, symbol_info, bytes, &type_id);
+        deserialize_value(symbol_collection, symbol_info, bytes, type_id)
     }
 }
 
@@ -505,10 +445,10 @@ pub fn serialize_struct(
 
                 Ok(all_bytes)
             } else {
-                return Err(anyhow!(
+                Err(anyhow!(
                     "Failed to get type information for structure {}",
                     symbol_info.name
-                ));
+                ))
             }
         }
         _ => Err(anyhow!("Expected VariantValue::Object for serialization")),
@@ -523,13 +463,9 @@ pub fn serialize(
     symbol_info: &AdsSymbolInfo,
     value: &VariantValue,
 ) -> Result<Vec<u8>, anyhow::Error> {
-    match &*value {
-        VariantValue::Array(_) => {
-            return serialize_array(symbol_collection, symbol_info, value);
-        }
-        VariantValue::Object(_) => {
-            return serialize_struct(symbol_collection, symbol_info, value);
-        }
+    match value {
+        VariantValue::Array(_) => serialize_array(symbol_collection, symbol_info, value),
+        VariantValue::Object(_) => serialize_struct(symbol_collection, symbol_info, value),
         VariantValue::String(str) => {
             let mut ret = str.as_bytes().to_vec();
 
@@ -537,58 +473,34 @@ pub fn serialize(
             // the allocated space, but also wipes out any characters that might
             // be longer than the previous string.
             ret.resize(symbol_info.size as usize, 0);
-            return Ok(ret);
+            Ok(ret)
         }
-        _ => return serialize_value(value),
+        _ => serialize_value(value),
     }
 }
 
 /// Serialize a POD value into a byte stream that can be transmitted
 /// over a connection.
 fn serialize_value(value: &VariantValue) -> Result<Vec<u8>, anyhow::Error> {
-    match &*value {
-        VariantValue::Null => {
-            return Err(anyhow!("Cannot serialize a NULL value!"));
-        }
+    match value {
+        VariantValue::Null => Err(anyhow!("Cannot serialize a NULL value!")),
         VariantValue::Bit(s) => {
             if *s {
-                return Ok(vec![1]);
+                Ok(vec![1])
             } else {
-                return Ok(vec![0]);
+                Ok(vec![0])
             }
         }
-        VariantValue::Byte(s) => {
-            return Ok(vec![*s]);
-        }
-        VariantValue::SByte(s) => {
-            return Ok(vec![*s as u8]);
-        }
-        VariantValue::Int16(s) => {
-            return Ok(s.to_le_bytes().to_vec());
-        }
-        VariantValue::UInt16(s) => {
-            return Ok(s.to_le_bytes().to_vec());
-        }
-        VariantValue::Int32(s) => {
-            return Ok(s.to_le_bytes().to_vec());
-        }
-        VariantValue::UInt32(s) => {
-            return Ok(s.to_le_bytes().to_vec());
-        }
-        VariantValue::Int64(s) => {
-            return Ok(s.to_le_bytes().to_vec());
-        }
-        VariantValue::UInt64(s) => {
-            return Ok(s.to_le_bytes().to_vec());
-        }
-        VariantValue::Real32(s) => {
-            return Ok(s.to_le_bytes().to_vec());
-        }
-        VariantValue::Real64(s) => {
-            return Ok(s.to_le_bytes().to_vec());
-        }
-        _ => {
-            return Err(anyhow!("This function not intended for all but POD types."));
-        }
+        VariantValue::Byte(s) => Ok(vec![*s]),
+        VariantValue::SByte(s) => Ok(vec![*s as u8]),
+        VariantValue::Int16(s) => Ok(s.to_le_bytes().to_vec()),
+        VariantValue::UInt16(s) => Ok(s.to_le_bytes().to_vec()),
+        VariantValue::Int32(s) => Ok(s.to_le_bytes().to_vec()),
+        VariantValue::UInt32(s) => Ok(s.to_le_bytes().to_vec()),
+        VariantValue::Int64(s) => Ok(s.to_le_bytes().to_vec()),
+        VariantValue::UInt64(s) => Ok(s.to_le_bytes().to_vec()),
+        VariantValue::Real32(s) => Ok(s.to_le_bytes().to_vec()),
+        VariantValue::Real64(s) => Ok(s.to_le_bytes().to_vec()),
+        _ => Err(anyhow!("This function not intended for all but POD types.")),
     }
 }

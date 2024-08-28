@@ -244,7 +244,7 @@ pub fn hello_ads() {
         println!("The ADS client port is {}", client_port);
 
 
-        let mut local_addr = AmsAddr::new();
+        let mut local_addr = AmsAddr::default();
 
         AdsGetLocalAddress(&mut local_addr);
 

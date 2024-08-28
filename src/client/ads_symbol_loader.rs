@@ -26,7 +26,7 @@ use crate::{AdsDatatypeArrayInfo, AdsDatatypeEntry, AmsAddr, ADSERR_NOERR};
 
 /// Stores information about a symbol parsed out from the
 /// controller.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Clone)]
 pub struct AdsSymbolInfo {
     /// Fully-qualified name of the symbol.
     pub name: String,
@@ -54,27 +54,8 @@ pub struct AdsSymbolInfo {
     pub array_dimensions: Vec<usize>,
 }
 
-impl AdsSymbolInfo {
-    /// Constructor
-    pub fn new() -> AdsSymbolInfo {
-        AdsSymbolInfo {
-            group_index: 0,
-            index_offset: 0,
-            size: 0,
-            offset: 0,
-            name: String::new(),
-            type_id: 0,
-            type_name: String::new(),
-            comment: String::new(),
-            is_structure: false,
-            is_array: false,
-            array_dimensions: Vec::new(),
-        }
-    }
-}
-
 /// Data type information uploaded from the PLC in a more Rust- and user-friendly format.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct AdsDataTypeInfo {
     pub name: String,
     pub comment: String,
@@ -176,31 +157,11 @@ pub struct AdsDataTypeInfo {
 // }
 
 impl AdsDataTypeInfo {
-    /// Default constructor. Creates a blank, useless item that serves only
-    /// as a placeholder.
-    pub fn new() -> Self {
-        return Self {
-            name: String::new(),
-            comment: String::new(),
-            entry_length: 0,
-            version: 0,
-            size: 0,
-            offset: 0,
-            data_type: 0,
-            flags: 0,
-            num_array_dimensions: 0,
-            num_fields: 0,
-            array_data_size: 0,
-            array_dimensions: Vec::new(),
-            fields: Vec::new(),
-        };
-    }
-
     /// Returns the number of child items this data type contains, be they
     /// from fields (meaning this is a structure) or array indices.
     pub fn sub_item_count(&self) -> usize {
         if self.num_fields > 0 {
-            return self.num_fields as usize;
+            self.num_fields as usize
         } else if self.num_array_dimensions > 0 {
             todo!()
             // let mut cnt = 1;
@@ -208,14 +169,14 @@ impl AdsDataTypeInfo {
             // for (USHORT i = 0; i < pEntry->arrayDim; i++)
             //     cnt *= pAI[i].elements;
         } else {
-            return 0;
+            0
         }
     }
 }
 
 /// A collection of the symbols and data type information uploaded from
 /// the target. Used by the client to properly serialize and deserialize data.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct AdsSymbolCollection {
     /// A collection of the symbols uploaded from the controller.
     /// A BTreeMap naturally keeps the symbol keys in alphabetical order.
@@ -239,18 +200,18 @@ impl AdsSymbolCollection {
         if symbol_info.type_name.contains("OF") {
             if let Some(start) = symbol_info.type_name.find("OF") {
                 let type_name = symbol_info.type_name[start + 3..].to_string();
-                return self.data_types.get(&type_name).clone().cloned();
+                self.data_types.get(&type_name).cloned()
             } else {
                 // Should not reach here.
-                return None;
+                None
             }
         } else {
-            if let Some(ret) = self.data_types.get(&symbol_info.type_name).clone().cloned() {
-                return Some(ret);
+            if let Some(ret) = self.data_types.get(&symbol_info.type_name).cloned() {
+                Some(ret)
             } else {
                 // We didn't upload this type, but it obviously exists. Return its generic information that
                 // should be useful enough for most situations.
-                return Some(AdsDataTypeInfo {
+                Some(AdsDataTypeInfo {
                     name: symbol_info.name.clone(),
                     comment: format!("GENERIC {}", &symbol_info.type_name),
                     entry_length: 0,
@@ -264,7 +225,7 @@ impl AdsSymbolCollection {
                     array_data_size: 0,
                     array_dimensions: Vec::new(),
                     fields: Vec::new(),
-                });
+                })
             }
 
             // if symbol_info.type_name.contains("STRING") || symbol_info.type_name.contains("T_MaxString") {
@@ -339,7 +300,7 @@ impl AdsSymbolCollection {
 
             // Basic, non-field and non-nested cases
             if !symbol.is_structure && tokens.len() < 3 {
-                return Ok(symbol.clone());
+                Ok(symbol.clone())
             } else {
                 // Field request - potentially nested
                 let remaining_symbol_name = tokens[2..].join(".");
@@ -351,19 +312,18 @@ impl AdsSymbolCollection {
                     let nested_field_result = self.get_symbol_info(&remaining_symbol_name);
 
                     match nested_field_result {
-                        Ok(field) => return Ok(field),
-                        Err(error) => return Err(error),
+                        Ok(field) => Ok(field),
+                        Err(error) => Err(error),
                     }
                 } else {
                     // this was a request for a specific field
                     // Loop through the fields until we find the specific one we need.
 
                     let mut tmp_symbol = symbol.clone();
-                    for i in 2..tokens.len() {
-                        let field_name = tokens[i];
+                    for field_name in tokens.iter().skip(2) {
                         if let Some(dt) = self.get_fundamental_type_info(&tmp_symbol) {
                             for field in dt.fields {
-                                if field.name == field_name {
+                                if field.name == *field_name {
                                     tmp_symbol = field.clone();
                                 }
                             }
@@ -375,14 +335,14 @@ impl AdsSymbolCollection {
                         }
                     }
 
-                    return Ok(tmp_symbol);
+                    Ok(tmp_symbol)
                 }
             }
         } else {
-            return Err(anyhow!(
+            Err(anyhow!(
                 "Cannot locate any information for symbol {}",
                 symbol_name
-            ));
+            ))
         }
     }
 
@@ -440,11 +400,11 @@ impl AdsSymbolCollection {
 
 /// Extract a string from a byte stream. If the string cannot be
 /// extracted, a blank string is returned.
-fn extract_string_from_stream(bytes: &Vec<u8>) -> String {
+fn extract_string_from_stream(bytes: &[u8]) -> String {
     if let Ok(str) = std::str::from_utf8(bytes) {
-        return str.to_string();
+        str.to_string()
     } else {
-        return String::new();
+        String::new()
     }
 }
 
@@ -460,10 +420,10 @@ pub enum AdsSymbolNode {
 
 fn parse_datatype_entry_field(
     item: &AdsDatatypeEntry,
-    buffer: &Box<[u8]>,
+    buffer: &[u8],
     offset: usize,
 ) -> Option<AdsSymbolInfo> {
-    let datatype_entry_len: usize = std::mem::size_of::<AdsDatatypeEntry>().try_into().unwrap();
+    let datatype_entry_len: usize = std::mem::size_of::<AdsDatatypeEntry>();
 
     if offset >= (buffer.len() + datatype_entry_len) {
         return None;
@@ -509,18 +469,18 @@ fn parse_datatype_entry_field(
             set_symbol_array_length(&mut ret);
         }
 
-        return Some(ret);
+        Some(ret)
     } else {
-        return None;
+        None
     }
 }
 
 fn parse_datatype_entry_item(
     item: &AdsDatatypeEntry,
-    buffer: &Box<[u8]>,
+    buffer: &[u8],
     offset: usize,
 ) -> Option<AdsDataTypeInfo> {
-    let datatype_entry_len: usize = std::mem::size_of::<AdsDatatypeEntry>().try_into().unwrap();
+    let datatype_entry_len: usize = std::mem::size_of::<AdsDatatypeEntry>();
 
     if offset >= (buffer.len() + datatype_entry_len) {
         return None;
@@ -566,9 +526,7 @@ fn parse_datatype_entry_item(
         //
         if ret.num_array_dimensions > 0 {
             let mut array_info_offset = comment_end + 1;
-            let array_info_len: usize = std::mem::size_of::<AdsDatatypeArrayInfo>()
-                .try_into()
-                .unwrap();
+            let array_info_len: usize = std::mem::size_of::<AdsDatatypeArrayInfo>();
 
             let mut arr_size = 1;
             for _i in 0..ret.num_array_dimensions {
@@ -591,11 +549,9 @@ fn parse_datatype_entry_item(
         // just after any array information and is a series of data type entries.
         //
         if ret.num_fields > 0 {
-            let array_info_len: usize = std::mem::size_of::<AdsDatatypeArrayInfo>()
-                .try_into()
-                .unwrap();
+            let array_info_len: usize = std::mem::size_of::<AdsDatatypeArrayInfo>();
             let field_info_offset =
-                comment_end + 1 + (ret.num_array_dimensions as usize * array_info_len as usize);
+                comment_end + 1 + (ret.num_array_dimensions as usize * array_info_len);
 
             let mut field_item_offset = field_info_offset;
             for _i in 0..ret.num_fields {
@@ -610,24 +566,24 @@ fn parse_datatype_entry_item(
                 {
                     ret.fields.push(entry);
                 } else {
-                    ret.fields.push(AdsSymbolInfo::new());
+                    ret.fields.push(AdsSymbolInfo::default());
                 }
 
                 field_item_offset += field_item.entryLength as usize;
             }
         }
 
-        return Some(ret);
+        Some(ret)
     } else {
-        return None;
+        None
     }
 }
 
-fn parse_datatypes(buffer: &Box<[u8]>) -> BTreeMap<String, AdsDataTypeInfo> {
+fn parse_datatypes(buffer: &[u8]) -> BTreeMap<String, AdsDataTypeInfo> {
     let mut ret = BTreeMap::new();
 
     let mut offset = 0;
-    let datatype_entry_len: usize = std::mem::size_of::<AdsDatatypeEntry>().try_into().unwrap();
+    let datatype_entry_len: usize = std::mem::size_of::<AdsDatatypeEntry>();
 
     let mut num_types = 0;
     //
@@ -638,7 +594,7 @@ fn parse_datatypes(buffer: &Box<[u8]>) -> BTreeMap<String, AdsDataTypeInfo> {
             let item: &AdsDatatypeEntry =
                 unsafe { &*buffer[offset..offset + datatype_entry_len].as_ptr().cast() };
 
-            if let Some(entry) = parse_datatype_entry_item(&item, buffer, offset) {
+            if let Some(entry) = parse_datatype_entry_item(item, buffer, offset) {
                 ret.insert(entry.name.clone(), entry);
             } else {
                 log::error!("Failed to parse a type!!");
@@ -655,7 +611,7 @@ fn parse_datatypes(buffer: &Box<[u8]>) -> BTreeMap<String, AdsDataTypeInfo> {
 
     log::info!("Uploaded {} data types from the PLC.", num_types);
 
-    return ret;
+    ret
 }
 
 /// Parse an array range declration "X...Y" to get the number of elements in an array.
@@ -664,15 +620,13 @@ fn parse_array_range(declaration: &str) -> usize {
 
     if tokens.len() < 2 {
         return 0;
-    } else {
-        if let Ok(lower) = tokens[0].parse::<usize>() {
-            if let Ok(upper) = tokens[1].parse::<usize>() {
-                return (upper - lower) + 1;
-            }
+    } else if let Ok(lower) = tokens[0].parse::<usize>() {
+        if let Ok(upper) = tokens[1].parse::<usize>() {
+            return (upper - lower) + 1;
         }
     }
 
-    return 0;
+    0
 }
 
 /// Parse out the data type declaration to determine the array dimensions and
@@ -752,7 +706,7 @@ pub fn upload_symbols(ams_address: &AmsAddr, port: i32) -> Option<AdsSymbolColle
     // Create a mutable ams_address, and a pointer to the that address
     // we can pass to the DLL.
     //
-    let mut private_address = ams_address.clone();
+    let mut private_address = *ams_address;
     let raw_address = &mut private_address as *mut AmsAddr;
 
     // Read the length of the variable declaration
@@ -823,7 +777,7 @@ pub fn upload_symbols(ams_address: &AmsAddr, port: i32) -> Option<AdsSymbolColle
     }
 
     let mut offset: usize = 0;
-    let len: usize = std::mem::size_of::<AdsSymbolEntry>().try_into().unwrap();
+    let len: usize = std::mem::size_of::<AdsSymbolEntry>();
 
     let mut uploaded_symbols: Vec<AdsSymbolInfo> =
         Vec::with_capacity(upload_info.nSymbols as usize);
@@ -831,9 +785,9 @@ pub fn upload_symbols(ams_address: &AmsAddr, port: i32) -> Option<AdsSymbolColle
     for _i in 0..upload_info.nSymbols {
         // let offset = i as usize * std::mem::size_of::<AdsSymbolEntry>();
 
-        let item: &AdsSymbolEntry = unsafe { &*buffer[offset..offset + len].as_ptr().cast() };
+        let mut symbol_info = AdsSymbolInfo::default();
 
-        let mut symbol_info = AdsSymbolInfo::new();
+        let item: &AdsSymbolEntry = unsafe { &*buffer[offset..offset + len].as_ptr().cast() };
 
         symbol_info.group_index = item.iGroup;
         symbol_info.index_offset = item.iOffs;
@@ -905,18 +859,10 @@ pub fn upload_symbols(ams_address: &AmsAddr, port: i32) -> Option<AdsSymbolColle
         }
     }
 
-    return Some(ret);
+    Some(ret)
 }
 
 impl AdsSymbolCollection {
-    /// Constructor. Returns an empty collection.
-    pub fn new() -> AdsSymbolCollection {
-        return AdsSymbolCollection {
-            symbols: BTreeMap::new(),
-            data_types: BTreeMap::new(),
-        };
-    }
-
     /// Search through the collection to find all items belonging to a particular
     /// domain. This method always returns a vector. If no tags exist for the
     /// provided domain, an empty vector is returned.
@@ -927,12 +873,12 @@ impl AdsSymbolCollection {
         let mut ret: Vec<AdsSymbolInfo> = Vec::new();
 
         for item in &self.symbols {
-            if item.0.starts_with(&domain) {
+            if item.0.starts_with(domain) {
                 ret.push(item.1.clone());
             }
         }
 
-        return ret;
+        ret
     }
 
     /// Create a new symbol collection from a Vector of symbols
@@ -946,7 +892,7 @@ impl AdsSymbolCollection {
             ret.symbols.insert(item.name.clone(), item.clone());
         }
 
-        return ret;
+        ret
     }
 
     /// Prints the symbols after sorting them alphabetically.

@@ -113,52 +113,53 @@ pub struct AdsClientNotification {
     pub value: VariantValue,
 }
 
-impl AdsClientNotification {
-    /// Construct a new DataChangeNotification with the current timestamp.
-    pub fn new() -> Self {
-        return Self {
+impl Default for AdsClientNotification {
+    fn default() -> Self {
+        Self {
             event_type: EventInfoType::Invalid,
             timestamp: Instant::now(),
             name: String::new(),
             value: VariantValue::Null,
-        };
+        }
     }
+}
 
+impl AdsClientNotification {
     pub fn new_datachange(name: &str, val: &VariantValue) -> Self {
-        return Self {
+        Self {
             event_type: EventInfoType::DataChange,
             timestamp: Instant::now(),
             name: name.to_string(),
             value: val.clone(),
-        };
+        }
     }
 
     pub fn new_ads_state(state: i16) -> Self {
-        return Self {
+        Self {
             event_type: EventInfoType::AdsState,
             timestamp: Instant::now(),
             name: String::new(),
             value: VariantValue::from(state),
-        };
+        }
     }
 
     pub fn new_router_state(state: i16) -> Self {
-        return Self {
+        Self {
             event_type: EventInfoType::RouterState,
             timestamp: Instant::now(),
             name: String::new(),
             value: VariantValue::from(state),
-        };
+        }
     }
 
     /// Creates an event that represents a change to the symbol table.
     pub fn new_symbol_table() -> Self {
-        return Self {
+        Self {
             event_type: EventInfoType::SymbolTableChange,
             timestamp: Instant::now(),
             name: String::new(),
             value: VariantValue::Null,
-        };
+        }
     }
 }
 
@@ -204,9 +205,9 @@ impl MaxString {
     // Method to convert MaxString to a Rust String
     pub fn to_string(&self) -> Result<String, std::string::FromUtf8Error> {
         if let Some(end_index) = self.0.iter().position(|&c| c == 0x00) {
-            return String::from_utf8(self.0[..end_index].to_vec());
+            String::from_utf8(self.0[..end_index].to_vec())
         } else {
-            return Ok(String::from(""));
+            Ok(String::from(""))
         }
     }
 
