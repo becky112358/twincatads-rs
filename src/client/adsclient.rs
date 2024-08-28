@@ -747,7 +747,6 @@ impl AdsClient {
 
     /// Search through the uploaded symbol collection to find all items belonging to a particular domain.
     /// This method always returns a vector. If no tags exist for the provided domain, an empty vector is returned.
-    #[allow(dead_code)]
     pub fn find_symbols_in_domain(&self, domain: &str) -> Vec<AdsSymbolInfo> {
         self.symbol_collection.find_symbols_in_domain(domain)
     }
@@ -788,7 +787,6 @@ impl AdsClient {
     }
 
     /// Upload information about a symbol from the PLC
-    #[allow(dead_code)]
     pub fn upload_symbol_entry(&mut self, symbol_name: &str) -> Result<AdsSymbolEntry> {
         let raw_address = &mut self.address as *mut AmsAddr;
         let mut handle: u32 = 0;
@@ -877,40 +875,32 @@ impl AdsClient {
     /// Synchronous write of a value to the target PLC as a stream of bytes.
     /// This is the primaruy function for writing any value to the PLC.
     fn write_raw_bytes(&mut self, symbol_name: &str, bytes: &[u8]) -> Result<()> {
-        let symbol_information = self.get_symbol_entry(symbol_name);
-        match symbol_information {
-            Ok(info) => {
-                let raw_address = &mut self.address as *mut AmsAddr;
+        let symbol_information = self.get_symbol_entry(symbol_name)?;
+        let raw_address = &mut self.address as *mut AmsAddr;
 
-                // AdsSyncWriteReqEx requires a mutable pointer to the byte buffer, so we need to
-                // make a copy, then a pointer to that copy.
-                let mut cloned_buffer = bytes.to_vec();
-                let ptr_buffer = cloned_buffer.as_mut_ptr() as *mut c_void;
+        // AdsSyncWriteReqEx requires a mutable pointer to the byte buffer, so we need to
+        // make a copy, then a pointer to that copy.
+        let mut cloned_buffer = bytes.to_vec();
+        let ptr_buffer = cloned_buffer.as_mut_ptr() as *mut c_void;
 
-                unsafe {
-                    let rc = AdsSyncWriteReqEx(
-                        self.current_comms_port,
-                        raw_address,
-                        info.iGroup,
-                        info.iOffs,
-                        bytes.len() as u32,
-                        ptr_buffer,
-                    );
+        unsafe {
+            let rc = AdsSyncWriteReqEx(
+                self.current_comms_port,
+                raw_address,
+                symbol_information.iGroup,
+                symbol_information.iOffs,
+                bytes.len() as u32,
+                ptr_buffer,
+            );
 
-                    if rc != 0 {
-                        Err(Error::new(
-                            ErrorKind::Other,
-                            format!("Failed to write symbol {symbol_name} with error {rc}"),
-                        ))
-                    } else {
-                        Ok(())
-                    }
-                }
+            if rc != 0 {
+                Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Failed to write symbol {symbol_name} with error {rc}"),
+                ))
+            } else {
+                Ok(())
             }
-            Err(err) => Err(Error::new(
-                ErrorKind::Other,
-                format!("Failed to read information for symbol {symbol_name} : {err}"),
-            )),
         }
     }
 
@@ -926,112 +916,85 @@ impl AdsClient {
         let mut bytes_read: u32 = 0;
         let ptr_bytes_read = &mut bytes_read as *mut u32;
 
-        let symbol_information = self.get_symbol_entry(symbol_name);
+        let symbol_information = self.get_symbol_entry(symbol_name)?;
 
-        match symbol_information {
-            Ok(info) => {
-                unsafe {
-                    // get the handle of the named symbol
+        unsafe {
+            // get the handle of the named symbol
 
-                    let err = AdsSyncReadWriteReqEx2(
-                        self.current_comms_port,
-                        raw_address,
-                        ADSIGRP_SYM_HNDBYNAME,
-                        0x0,
-                        std::mem::size_of::<u32>().try_into().unwrap(),
-                        ptr_handle,
-                        symbol_name.len() as u32,
-                        ptr_name,
-                        ptr_bytes_read,
-                    );
+            let err = AdsSyncReadWriteReqEx2(
+                self.current_comms_port,
+                raw_address,
+                ADSIGRP_SYM_HNDBYNAME,
+                0x0,
+                std::mem::size_of::<u32>().try_into().unwrap(),
+                ptr_handle,
+                symbol_name.len() as u32,
+                ptr_name,
+                ptr_bytes_read,
+            );
 
-                    if err != 0 {
-                        // an error occurred.
+            if err != 0 {
+                // an error occurred.
 
-                        Err(Error::new(
-                            ErrorKind::Other,
-                            format!("Error {err} occurred!"),
-                        ))
-                    } else {
-                        // Create a buffer of the appropriate sise, filled with 0's.
-                        let mut buffer = vec![0u8; info.size as usize];
-                        // Create a pointer to that under
-                        let ptr_buffer = buffer.as_mut_ptr() as *mut c_void;
+                Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Error {err} occurred!"),
+                ))
+            } else {
+                // Create a buffer of the appropriate sise, filled with 0's.
+                let mut buffer = vec![0u8; symbol_information.size as usize];
+                // Create a pointer to that under
+                let ptr_buffer = buffer.as_mut_ptr() as *mut c_void;
 
-                        let read_err = AdsSyncReadReqEx2(
-                            self.current_comms_port,
-                            raw_address,
-                            ADSIGRP_SYM_VALBYHND,
-                            handle,
-                            info.size,
-                            ptr_buffer,
-                            std::ptr::null_mut(),
-                        );
+                let read_err = AdsSyncReadReqEx2(
+                    self.current_comms_port,
+                    raw_address,
+                    ADSIGRP_SYM_VALBYHND,
+                    handle,
+                    symbol_information.size,
+                    ptr_buffer,
+                    std::ptr::null_mut(),
+                );
 
-                        if read_err != 0 {
-                            // TODO: convert error code to error string.
-                            Err(Error::new(
-                                ErrorKind::Other,
-                                format!("Error {read_err} occurred reading value into buffer",),
-                            ))
-                        } else {
-                            Ok(buffer)
-                        }
-                    }
+                if read_err != 0 {
+                    // TODO: convert error code to error string.
+                    Err(Error::new(
+                        ErrorKind::Other,
+                        format!("Error {read_err} occurred reading value into buffer",),
+                    ))
+                } else {
+                    Ok(buffer)
                 }
             }
-            Err(err) => Err(Error::new(
-                ErrorKind::Other,
-                format!("Error : could not obtain handle to symbol {symbol_name} : {err}",),
-            )),
         }
     }
 
     /// Synchronous read of a symbol based upon its name in the PLC.
     /// Complete, fully-qualified name required.
     pub fn read_symbol_by_name(&mut self, symbol_name: &str) -> Result<variant::VariantValue> {
-        match self.read_raw_bytes(symbol_name) {
-            Ok(buffer) => {
-                //log::debug!("RES {} BUFFER: {:?}", buffer.len(), buffer);
+        let buffer = self.read_raw_bytes(symbol_name)?;
+        //log::debug!("RES {} BUFFER: {:?}", buffer.len(), buffer);
 
-                let symbol_information = self.get_symbol_entry(symbol_name);
-                match symbol_information {
-                    Ok(info) => match AdsDataTypeId::try_from(info.dataType) {
-                        Ok(dt) => {
-                            if let Ok(symbol_info) =
-                                self.symbol_collection.get_symbol_info(symbol_name)
-                            {
-                                if let Some(ret) = ads_data::deserialize(
-                                    &self.symbol_collection,
-                                    &symbol_info,
-                                    &buffer,
-                                    &dt,
-                                ) {
-                                    Ok(ret)
-                                } else {
-                                    Err(Error::new(
-                                        ErrorKind::Other,
-                                        format!("Failed to read symbol: {symbol_name}"),
-                                    ))
-                                }
-                            } else {
-                                Err(Error::new(
-                                    ErrorKind::NotFound,
-                                    format!(
-                                    "Failed to find symbol {symbol_name} in uploaded symbol table"
-                                ),
-                                ))
-                            }
-                        }
-                        Err(err) => Err(Error::new(
-                            ErrorKind::Other,
-                            format!("Unsupported type {err} for symbol: {symbol_name}"),
-                        )),
-                    },
-                    Err(err) => Err(err),
-                }
+        let symbol_information = self.get_symbol_entry(symbol_name)?;
+        let dt = match AdsDataTypeId::try_from(symbol_information.dataType) {
+            Ok(dt) => dt,
+            Err(err) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Unsupported type {err} for symbol: {symbol_name}"),
+                ))
             }
-            Err(err) => Err(err),
+        };
+        let symbol_info = self.symbol_collection.get_symbol_info(symbol_name)?;
+        if let Some(ret) =
+            ads_data::deserialize(&self.symbol_collection, &symbol_info, &buffer, &dt)
+        {
+            Ok(ret)
+        } else {
+            Err(Error::new(
+                ErrorKind::Other,
+                format!("Failed to read symbol: {symbol_name}"),
+            ))
         }
     }
 
@@ -1046,42 +1009,36 @@ impl AdsClient {
         &mut self,
         symbol_name: &str,
     ) -> Result<T> {
-        match self.read_raw_bytes(symbol_name) {
-            Ok(buffer) => {
-                // Ensure buffer is large enough to contain T
-                if buffer.len() < std::mem::size_of::<T>() {
-                    return Err(Error::new(
-                        ErrorKind::Other,
-                        format!(
-                            "Buffer size {} is too small for type size {}",
-                            buffer.len(),
-                            std::mem::size_of::<T>()
-                        ),
-                    ));
-                }
+        let buffer = self.read_raw_bytes(symbol_name)?;
+        // Ensure buffer is large enough to contain T
+        if buffer.len() < std::mem::size_of::<T>() {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Buffer size {} is too small for type size {}",
+                    buffer.len(),
+                    std::mem::size_of::<T>()
+                ),
+            ));
+        }
 
-                // Use ZeroCopy to convert the buffer into T
-                match T::read_from(&*buffer) {
-                    Some(value) => Ok(value),
-                    None => Err(Error::new(
-                        ErrorKind::Other,
-                        format!(
-                            "Failed to convert buffer to type. Buffer size: {}",
-                            buffer.len()
-                        ),
-                    )),
-                }
-            }
-            Err(err) => Err(err),
+        // Use ZeroCopy to convert the buffer into T
+        match T::read_from(&*buffer) {
+            Some(value) => Ok(value),
+            None => Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Failed to convert buffer to type. Buffer size: {}",
+                    buffer.len()
+                ),
+            )),
         }
     }
 
     /// Read a symbol value specifically as a string.
     pub fn read_symbol_string_value(&mut self, symbol_name: &str) -> Result<String> {
-        match self.read_raw_bytes(symbol_name) {
-            Ok(buffer) => vec_to_string(&buffer),
-            Err(err) => Err(err),
-        }
+        let buffer = self.read_raw_bytes(symbol_name)?;
+        vec_to_string(&buffer)
     }
 
     /// Write the value of the specified type to the target. The type is serialized and transmitted.
@@ -1113,23 +1070,9 @@ impl AdsClient {
         symbol_name: &str,
         value: &VariantValue,
     ) -> Result<()> {
-        if let Ok(symbol_info) = self.symbol_collection.get_symbol_info(symbol_name) {
-            match serialize(&self.symbol_collection, &symbol_info, value) {
-                Ok(bytes) => {
-                    //log::debug!("\n{:?}\n", bytes);
-                    self.write_raw_bytes(symbol_name, &bytes)
-                }
-                Err(err) => Err(Error::new(
-                    ErrorKind::Other,
-                    format!("Failed to serialize value: {err}"),
-                )),
-            }
-        } else {
-            Err(Error::new(
-                ErrorKind::Other,
-                format!("Failed to find information on symbol {symbol_name}",),
-            ))
-        }
+        let symbol_info = self.symbol_collection.get_symbol_info(symbol_name)?;
+        let bytes = serialize(&self.symbol_collection, &symbol_info, value)?;
+        self.write_raw_bytes(symbol_name, &bytes)
     }
 
     /// Converts a JSON value to a corresponding `VariantValue` based on ADS symbol information.
@@ -1313,93 +1256,96 @@ impl AdsClient {
         json_val: &serde_json::Value,
         dt: &AdsDataTypeInfo,
     ) -> Result<VariantValue> {
-        if let Ok(type_id) = AdsDataTypeId::try_from(dt.data_type) {
-            match type_id {
-                AdsDataTypeId::Void => Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "Cannot write to a void type value",
-                )),
-                AdsDataTypeId::Int8 => json_val
-                    .as_i64()
-                    .map(|x| VariantValue::SByte(x as i8))
-                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Int8")),
-                AdsDataTypeId::UInt8 => json_val
-                    .as_u64()
-                    .map(|x| VariantValue::Byte(x as u8))
-                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for UInt8")),
-                AdsDataTypeId::Int16 => json_val
-                    .as_i64()
-                    .map(|x| VariantValue::Int16(x as i16))
-                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Int16")),
-                AdsDataTypeId::UInt16 => json_val
-                    .as_u64()
-                    .map(|x| VariantValue::UInt16(x as u16))
-                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for UInt16")),
-                AdsDataTypeId::Int32 => json_val
-                    .as_i64()
-                    .map(|x| VariantValue::Int32(x as i32))
-                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Int32")),
-                AdsDataTypeId::UInt32 => json_val
-                    .as_u64()
-                    .map(|x| VariantValue::UInt32(x as u32))
-                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for UInt32")),
-                AdsDataTypeId::Int64 => json_val
-                    .as_i64()
-                    .map(VariantValue::Int64)
-                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Int64")),
-                AdsDataTypeId::UInt64 => json_val
-                    .as_u64()
-                    .map(VariantValue::UInt64)
-                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for UInt64")),
-                AdsDataTypeId::Real32 => json_val
-                    .as_f64()
-                    .map(|x| VariantValue::Real32(x as f32))
-                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Real32")),
-                AdsDataTypeId::Real64 => json_val
-                    .as_f64()
-                    .map(VariantValue::Real64)
-                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Real64")),
-                AdsDataTypeId::String | AdsDataTypeId::WString => json_val
-                    .as_str()
-                    .map(|s| VariantValue::String(s.to_string()))
-                    .ok_or_else(|| {
-                        Error::new(ErrorKind::InvalidInput, "Invalid value for String types")
-                    }),
-                AdsDataTypeId::Bit => json_val
-                    .as_bool()
-                    .map(VariantValue::Bit)
-                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for bool")),
-                AdsDataTypeId::BigType => {
-                    if let serde_json::Value::Object(map) = json_val {
-                        let mut object = IndexMap::new();
-                        for field in &dt.fields {
-                            let field_value = map.get(&field.name).ok_or_else(|| {
-                                Error::new(
-                                    ErrorKind::Other,
-                                    format!("Field '{}' missing in input JSON", field.name),
-                                )
-                            })?;
-                            let field_variant = self.convert_json_to_variant(field_value, field)?;
-                            object.insert(field.name.clone(), field_variant);
-                        }
-                        Ok(VariantValue::Object(Box::new(object)))
-                    } else {
-                        Err(Error::new(
-                            ErrorKind::InvalidInput,
-                            "Expected a JSON object for structure serialization",
-                        ))
-                    }
-                }
-                _ => Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "Unsupported data type ID",
-                )),
+        let type_id = match AdsDataTypeId::try_from(dt.data_type) {
+            Ok(ti) => ti,
+            Err(_) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Unsupported data type id {}", dt.data_type),
+                ))
             }
-        } else {
-            Err(Error::new(
-                ErrorKind::Other,
-                format!("Unsupported data type id {}", dt.data_type),
-            ))
+        };
+
+        match type_id {
+            AdsDataTypeId::Void => Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Cannot write to a void type value",
+            )),
+            AdsDataTypeId::Int8 => json_val
+                .as_i64()
+                .map(|x| VariantValue::SByte(x as i8))
+                .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Int8")),
+            AdsDataTypeId::UInt8 => json_val
+                .as_u64()
+                .map(|x| VariantValue::Byte(x as u8))
+                .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for UInt8")),
+            AdsDataTypeId::Int16 => json_val
+                .as_i64()
+                .map(|x| VariantValue::Int16(x as i16))
+                .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Int16")),
+            AdsDataTypeId::UInt16 => json_val
+                .as_u64()
+                .map(|x| VariantValue::UInt16(x as u16))
+                .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for UInt16")),
+            AdsDataTypeId::Int32 => json_val
+                .as_i64()
+                .map(|x| VariantValue::Int32(x as i32))
+                .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Int32")),
+            AdsDataTypeId::UInt32 => json_val
+                .as_u64()
+                .map(|x| VariantValue::UInt32(x as u32))
+                .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for UInt32")),
+            AdsDataTypeId::Int64 => json_val
+                .as_i64()
+                .map(VariantValue::Int64)
+                .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Int64")),
+            AdsDataTypeId::UInt64 => json_val
+                .as_u64()
+                .map(VariantValue::UInt64)
+                .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for UInt64")),
+            AdsDataTypeId::Real32 => json_val
+                .as_f64()
+                .map(|x| VariantValue::Real32(x as f32))
+                .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Real32")),
+            AdsDataTypeId::Real64 => json_val
+                .as_f64()
+                .map(VariantValue::Real64)
+                .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Real64")),
+            AdsDataTypeId::String | AdsDataTypeId::WString => json_val
+                .as_str()
+                .map(|s| VariantValue::String(s.to_string()))
+                .ok_or_else(|| {
+                    Error::new(ErrorKind::InvalidInput, "Invalid value for String types")
+                }),
+            AdsDataTypeId::Bit => json_val
+                .as_bool()
+                .map(VariantValue::Bit)
+                .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for bool")),
+            AdsDataTypeId::BigType => {
+                if let serde_json::Value::Object(map) = json_val {
+                    let mut object = IndexMap::new();
+                    for field in &dt.fields {
+                        let field_value = map.get(&field.name).ok_or_else(|| {
+                            Error::new(
+                                ErrorKind::Other,
+                                format!("Field '{}' missing in input JSON", field.name),
+                            )
+                        })?;
+                        let field_variant = self.convert_json_to_variant(field_value, field)?;
+                        object.insert(field.name.clone(), field_variant);
+                    }
+                    Ok(VariantValue::Object(Box::new(object)))
+                } else {
+                    Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "Expected a JSON object for structure serialization",
+                    ))
+                }
+            }
+            _ => Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Unsupported data type ID",
+            )),
         }
     }
 
@@ -1419,19 +1365,9 @@ impl AdsClient {
         symbol_name: &str,
         value: &serde_json::Value,
     ) -> Result<()> {
-        match self.symbol_collection.get_symbol_info(symbol_name) {
-            Ok(info) => match self.convert_json_to_variant(value, &info) {
-                Ok(var) => self.write_symbol_variant_value(symbol_name, &var),
-                Err(err) => Err(Error::new(
-                    ErrorKind::Other,
-                    format!("Error writing symbol {symbol_name} : {err}"),
-                )),
-            },
-            Err(err) => Err(Error::new(
-                ErrorKind::NotFound,
-                format!("Failed to locate info on symbol {symbol_name} : {err}"),
-            )),
-        }
+        let info = self.symbol_collection.get_symbol_info(symbol_name)?;
+        let var = self.convert_json_to_variant(value, &info)?;
+        self.write_symbol_variant_value(symbol_name, &var)
     }
 
     /// Register a symbol for on-data-change notification.
@@ -1449,118 +1385,106 @@ impl AdsClient {
             }
         }
 
-        if let Ok(symbol) = self.symbol_collection.get_symbol_info(symbol_name) {
-            // Cycle time determines the maximum update frequency for a registered symbol.
-            // For symbols that change constantly, like motion position or load cell readings,
-            // cycle time should be increased to avoid crushing the user interface.
-            let mut cycle_time_ms: u32 = 50;
+        let symbol = self.symbol_collection.get_symbol_info(symbol_name)?;
 
-            if options.contains_key("cycle_time") {
-                if let Some(val) = options["cycle_time"].as_u64() {
-                    cycle_time_ms = val as u32;
-                }
+        // Cycle time determines the maximum update frequency for a registered symbol.
+        // For symbols that change constantly, like motion position or load cell readings,
+        // cycle time should be increased to avoid crushing the user interface.
+        let mut cycle_time_ms: u32 = 50;
+
+        if options.contains_key("cycle_time") {
+            if let Some(val) = options["cycle_time"].as_u64() {
+                cycle_time_ms = val as u32;
             }
+        }
 
-            if cycle_time_ms < 10 {
-                cycle_time_ms = 10;
-            }
+        if cycle_time_ms < 10 {
+            cycle_time_ms = 10;
+        }
 
-            // unit = 100ns, 10msec = 100000
-            let cycle_time_ns = cycle_time_ms * 10000;
+        // unit = 100ns, 10msec = 100000
+        let cycle_time_ns = cycle_time_ms * 10000;
 
-            let symbol_data_type;
-            if let Ok(id) = AdsDataTypeId::try_from(symbol.type_id) {
-                symbol_data_type = id;
-            } else {
+        let symbol_data_type = match AdsDataTypeId::try_from(symbol.type_id) {
+            Ok(id) => id,
+            Err(_) => {
                 return Err(Error::new(
                     ErrorKind::NotFound,
                     format!("Failed to extract data type for symbol {symbol_name}"),
-                ));
+                ))
             }
+        };
+
+        log::info!(
+            "Attempting to register {} with type {:?}",
+            symbol_name,
+            symbol_data_type
+        );
+
+        //
+        // Bindgen somehow flubbed the generation of the nCycleTime member, and turned it into
+        // a union.
+        //
+        let nCycleTime = AdsNotificationAttrib__bindgen_ty_1 {
+            nCycleTime: cycle_time_ns,
+        }; // unit = 100ns, 10msec = 100000
+
+        let mut attrib = AdsNotificationAttrib {
+            cbLength: symbol.size,
+            nTransMode: nAdsTransMode_ADSTRANS_SERVERONCHA,
+            nMaxDelay: 0,
+            __bindgen_anon_1: nCycleTime, // nCycleTimeMember
+        };
+
+        let handle = self.get_handle_by_name(symbol_name)?;
+        let raw_address = &mut self.address as *mut AmsAddr;
+        let mut notification_handle: u32 = 0;
+        let ptr_notification_handle = &mut notification_handle as *mut u32;
+        let ptr_attrib = &mut attrib as *mut AdsNotificationAttrib;
+
+        unsafe {
+            //
+            // A note about callbacks:
+            // Callback signatures typically get generated as Option<unsafe extern "C" fn ...>
+            // in bindgen. So when you write your callbacks in Rust, you obviously need to decorate
+            // them with unsafe extern "C" (they don’t need to be pub), and then when you pass them
+            // to the C library you just wrap the name in Some.
+            //
 
             log::info!(
-                "Attempting to register {} with type {:?}",
+                "Registering notification for {} with handle {}",
                 symbol_name,
-                symbol_data_type
+                handle
             );
 
-            //
-            // Bindgen somehow flubbed the generation of the nCycleTime member, and turned it into
-            // a union.
-            //
-            let nCycleTime = AdsNotificationAttrib__bindgen_ty_1 {
-                nCycleTime: cycle_time_ns,
-            }; // unit = 100ns, 10msec = 100000
+            let notitication_err = AdsSyncAddDeviceNotificationReqEx(
+                self.current_comms_port,
+                raw_address,
+                ADSIGRP_SYM_VALBYHND,
+                handle,
+                ptr_attrib,
+                Some(ads_value_callback), // see note above
+                handle,
+                ptr_notification_handle,
+            );
 
-            let mut attrib = AdsNotificationAttrib {
-                cbLength: symbol.size,
-                nTransMode: nAdsTransMode_ADSTRANS_SERVERONCHA,
-                nMaxDelay: 0,
-                __bindgen_anon_1: nCycleTime, // nCycleTimeMember
-            };
-
-            match self.get_handle_by_name(symbol_name) {
-                Ok(handle) => {
-                    let raw_address = &mut self.address as *mut AmsAddr;
-                    let mut notification_handle: u32 = 0;
-                    let ptr_notification_handle = &mut notification_handle as *mut u32;
-                    let ptr_attrib = &mut attrib as *mut AdsNotificationAttrib;
-
-                    unsafe {
-                        //
-                        // A note about callbacks:
-                        // Callback signatures typically get generated as Option<unsafe extern "C" fn ...>
-                        // in bindgen. So when you write your callbacks in Rust, you obviously need to decorate
-                        // them with unsafe extern "C" (they don’t need to be pub), and then when you pass them
-                        // to the C library you just wrap the name in Some.
-                        //
-
-                        log::info!(
-                            "Registering notification for {} with handle {}",
-                            symbol_name,
-                            handle
-                        );
-
-                        let notitication_err = AdsSyncAddDeviceNotificationReqEx(
-                            self.current_comms_port,
-                            raw_address,
-                            ADSIGRP_SYM_VALBYHND,
-                            handle,
-                            ptr_attrib,
-                            Some(ads_value_callback), // see note above
-                            handle,
-                            ptr_notification_handle,
-                        );
-
-                        if notitication_err != 0 {
-                            return Err(Error::new(
-                                ErrorKind::Other,
-                                format!("Failed to register handle: {notitication_err}"),
-                            ));
-                        }
-                    }
-
-                    add_registered_symbol(RegisteredSymbol {
-                        handle,
-                        notification_handle,
-                        name: symbol_name.to_string(),
-                        data_type_id: symbol_data_type,
-                        options: options.clone(),
-                    });
-
-                    Ok(())
-                }
-                Err(err) => Err(err),
+            if notitication_err != 0 {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Failed to register handle: {notitication_err}"),
+                ));
             }
-        } else {
-            Err(Error::new(
-                ErrorKind::Other,
-                format!(
-                    "The requested symbol {symbol_name} does not exist in the controller. 
-                Please check symbol name and connection properties.",
-                ),
-            ))
         }
+
+        add_registered_symbol(RegisteredSymbol {
+            handle,
+            notification_handle,
+            name: symbol_name.to_string(),
+            data_type_id: symbol_data_type,
+            options: options.clone(),
+        });
+
+        Ok(())
     }
 
     /// Unregister a symbol that was registered for notification. It's important to unregister

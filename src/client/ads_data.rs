@@ -102,122 +102,125 @@ pub fn deserialize_structure(
     bytes: &[u8],
     _type_id: &AdsDataTypeId,
 ) -> Option<VariantValue> {
-    if let Some(dt) = symbol_collection.get_fundamental_type_info(symbol_info) {
-        let mut map: IndexMap<String, VariantValue> = IndexMap::new();
+    let dt = match symbol_collection.get_fundamental_type_info(symbol_info) {
+        Some(dt) => dt,
+        None => {
+            log::error!(
+                "Failed to find structure type name: {}",
+                symbol_info.type_name
+            );
+            return None;
+        }
+    };
 
-        for field in &dt.fields {
-            // We have to use the specified field offset uploaded from the device. The
-            // controller doesn't always align bytes as expected; it will add "dummy" bytes.
-            let offs = field.offset as usize;
+    let mut map: IndexMap<String, VariantValue> = IndexMap::new();
 
-            if let Some(field_info) = symbol_collection.data_types.get(&field.type_name) {
-                // log::debug!("*** field_info.num_fields > {} || field.is_structure {} || field.type_id == {}\n{:?}\n{:?}\n",
-                //     field_info.num_fields, field.is_structure, field.type_id, field, field_info.array_dimensions
+    for field in &dt.fields {
+        // We have to use the specified field offset uploaded from the device. The
+        // controller doesn't always align bytes as expected; it will add "dummy" bytes.
+        let offs = field.offset as usize;
 
-                // );
+        if let Some(field_info) = symbol_collection.data_types.get(&field.type_name) {
+            // log::debug!("*** field_info.num_fields > {} || field.is_structure {} || field.type_id == {}\n{:?}\n{:?}\n",
+            //     field_info.num_fields, field.is_structure, field.type_id, field, field_info.array_dimensions
 
-                if field_info.num_fields > 0
-                    || field.is_structure
-                    || (field.type_id == 65 && !field.is_array)
-                {
-                    // This is a structure
+            // );
 
-                    match AdsDataTypeId::try_from(field.type_id) {
-                        Ok(field_type_id) => {
-                            // log::debug!("Field {} is a structure with size {} [{}]", field.name, field.size, field_info.size);
+            if field_info.num_fields > 0
+                || field.is_structure
+                || (field.type_id == 65 && !field.is_array)
+            {
+                // This is a structure
 
-                            if let Some(val) = deserialize_structure(
-                                symbol_collection,
-                                field,
-                                &bytes[offs..offs + field.size as usize],
-                                &field_type_id,
-                            ) {
-                                map.insert(field.name.clone(), val);
-                            } else {
-                                log::error!(
-                                    "Error deserializing field {} type {}",
-                                    field.name,
-                                    field.type_id
-                                );
-                                map.insert(field.name.clone(), VariantValue::Null);
-                            }
-                        }
-                        Err(err) => {
+                match AdsDataTypeId::try_from(field.type_id) {
+                    Ok(field_type_id) => {
+                        // log::debug!("Field {} is a structure with size {} [{}]", field.name, field.size, field_info.size);
+
+                        if let Some(val) = deserialize_structure(
+                            symbol_collection,
+                            field,
+                            &bytes[offs..offs + field.size as usize],
+                            &field_type_id,
+                        ) {
+                            map.insert(field.name.clone(), val);
+                        } else {
                             log::error!(
-                                "Error processing type of field {} type {} err: {}",
+                                "Error deserializing field {} type {}",
                                 field.name,
-                                field.type_id,
-                                err
+                                field.type_id
                             );
                             map.insert(field.name.clone(), VariantValue::Null);
                         }
                     }
-                } else if field.is_array {
-                    //log::debug!("Field {} is array.", field.name);
+                    Err(err) => {
+                        log::error!(
+                            "Error processing type of field {} type {} err: {}",
+                            field.name,
+                            field.type_id,
+                            err
+                        );
+                        map.insert(field.name.clone(), VariantValue::Null);
+                    }
+                }
+            } else if field.is_array {
+                //log::debug!("Field {} is array.", field.name);
 
-                    match AdsDataTypeId::try_from(field.type_id) {
-                        Ok(field_type_id) => {
-                            let arr = deserialize_array(
-                                symbol_collection,
-                                field,
-                                &bytes[offs..offs + field.size as usize],
-                                &field_type_id,
-                            );
+                match AdsDataTypeId::try_from(field.type_id) {
+                    Ok(field_type_id) => {
+                        let arr = deserialize_array(
+                            symbol_collection,
+                            field,
+                            &bytes[offs..offs + field.size as usize],
+                            &field_type_id,
+                        );
 
-                            if let Some(var) = arr {
-                                map.insert(field.name.clone(), var);
-                            } else {
-                                map.insert(field.name.clone(), VariantValue::Null);
-                            }
-                        }
-                        Err(err) => {
-                            log::error!(
-                                "Error processing field {} type {} err: {}",
-                                field.name,
-                                field.type_id,
-                                err
-                            );
+                        if let Some(var) = arr {
+                            map.insert(field.name.clone(), var);
+                        } else {
                             map.insert(field.name.clone(), VariantValue::Null);
                         }
                     }
-                } else {
-                    // plain old data
+                    Err(err) => {
+                        log::error!(
+                            "Error processing field {} type {} err: {}",
+                            field.name,
+                            field.type_id,
+                            err
+                        );
+                        map.insert(field.name.clone(), VariantValue::Null);
+                    }
+                }
+            } else {
+                // plain old data
 
-                    // log::debug!("P.O.D. Field offset {} type {}\n\t{:?}", field.offset, field.type_id, symbol_info);
+                // log::debug!("P.O.D. Field offset {} type {}\n\t{:?}", field.offset, field.type_id, symbol_info);
 
-                    match AdsDataTypeId::try_from(field.type_id) {
-                        Ok(field_type_id) => {
-                            if let Some(val) = deserialize_value(
-                                symbol_collection,
-                                symbol_info,
-                                &bytes[offs..offs + field.size as usize].to_vec(),
-                                &field_type_id,
-                            ) {
-                                map.insert(field.name.clone(), val);
-                            }
+                match AdsDataTypeId::try_from(field.type_id) {
+                    Ok(field_type_id) => {
+                        if let Some(val) = deserialize_value(
+                            symbol_collection,
+                            symbol_info,
+                            &bytes[offs..offs + field.size as usize].to_vec(),
+                            &field_type_id,
+                        ) {
+                            map.insert(field.name.clone(), val);
                         }
-                        Err(err) => {
-                            log::error!(
-                                "Error processing field {} type {} err: {}",
-                                field.name,
-                                field.type_id,
-                                err
-                            );
-                            map.insert(field.name.clone(), VariantValue::Null);
-                        }
+                    }
+                    Err(err) => {
+                        log::error!(
+                            "Error processing field {} type {} err: {}",
+                            field.name,
+                            field.type_id,
+                            err
+                        );
+                        map.insert(field.name.clone(), VariantValue::Null);
                     }
                 }
             }
         }
-
-        Some(VariantValue::Object(Box::new(map)))
-    } else {
-        log::error!(
-            "Failed to find structure type name: {}",
-            symbol_info.type_name
-        );
-        None
     }
+
+    Some(VariantValue::Object(Box::new(map)))
 }
 
 pub fn deserialize_array(
@@ -376,17 +379,8 @@ pub fn serialize_array(
             let mut all_bytes = Vec::new();
 
             for item in arr {
-                match serialize(symbol_collection, symbol_info, item) {
-                    Ok(bytes) => {
-                        all_bytes.extend(bytes);
-                    }
-                    Err(err) => {
-                        return Err(Error::new(
-                            ErrorKind::Other,
-                            format!("Error serializing an array index : {err}"),
-                        ));
-                    }
-                }
+                let bytes = serialize(symbol_collection, symbol_info, item)?;
+                all_bytes.extend(bytes);
             }
 
             if all_bytes.len() < symbol_info.size as usize {
@@ -397,7 +391,7 @@ pub fn serialize_array(
         }
         _ => Err(Error::new(
             ErrorKind::InvalidInput,
-            "Expected VariantValue::Object for serialization",
+            "Expected VariantValue::Array for serialization",
         )),
     }
 }
@@ -410,69 +404,65 @@ pub fn serialize_struct(
     symbol_info: &AdsSymbolInfo,
     value: &VariantValue,
 ) -> std::io::Result<Vec<u8>> {
-    match value {
-        VariantValue::Object(boxed_map) => {
-            let mut all_bytes = Vec::new();
-
-            if let Some(dt) = symbol_collection.get_fundamental_type_info(symbol_info) {
-                let mut count = 0;
-                // Iterate over the IndexMap and serialize each key-value pair
-                for (key, val) in boxed_map.iter() {
-                    if count < dt.fields.len() {
-                        let field = &dt.fields[count];
-
-                        match serialize(symbol_collection, field, val) {
-                            Ok(bytes) => {
-                                let offs = field.offset as usize;
-                                if all_bytes.len() < offs {
-                                    // The structure has been padded with "dummy" bytes in the controller.
-                                    // Adjust.
-                                    // Calculate the number of padding bytes needed
-                                    let padding_size = offs - all_bytes.len();
-
-                                    // Extend all_bytes with the calculated number of zero bytes
-                                    all_bytes.extend(std::iter::repeat(0).take(padding_size));
-                                }
-
-                                all_bytes.extend(bytes);
-                            }
-                            Err(err) => {
-                                return Err(Error::new(
-                                    ErrorKind::Other,
-                                    format!("Error serializing field {key} : {err}"),
-                                ));
-                            }
-                        }
-
-                        count += 1;
-                    } else {
-                        return Err(Error::new(
-                            ErrorKind::Other,
-                            format!("count {count} >= files length {}", dt.fields.len()),
-                        ));
-                    }
-                }
-
-                if all_bytes.len() < dt.size as usize {
-                    all_bytes.resize(dt.size as usize, 0);
-                }
-
-                Ok(all_bytes)
-            } else {
-                Err(Error::new(
-                    ErrorKind::Other,
-                    format!(
-                        "Failed to get type information for structure {}",
-                        symbol_info.name
-                    ),
-                ))
-            }
+    let boxed_map = match value {
+        VariantValue::Object(bm) => bm,
+        _ => {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Expected VariantValue::Object for serialization",
+            ))
         }
-        _ => Err(Error::new(
-            ErrorKind::InvalidInput,
-            "Expected VariantValue::Object for serialization",
-        )),
+    };
+
+    let mut all_bytes = Vec::new();
+
+    let dt = match symbol_collection.get_fundamental_type_info(symbol_info) {
+        Some(dt) => dt,
+        None => {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Failed to get type information for structure {}",
+                    symbol_info.name
+                ),
+            ))
+        }
+    };
+
+    let mut count = 0;
+    // Iterate over the IndexMap and serialize each key-value pair
+    for (_, val) in boxed_map.iter() {
+        if count >= dt.fields.len() {
+            return Err(Error::new(
+                ErrorKind::Other,
+                format!("count {count} >= files length {}", dt.fields.len()),
+            ));
+        }
+
+        let field = &dt.fields[count];
+
+        let bytes = serialize(symbol_collection, field, val)?;
+        let offs = field.offset as usize;
+        if all_bytes.len() < offs {
+            // The structure has been padded with "dummy" bytes in the controller.
+            // Adjust.
+            // Calculate the number of padding bytes needed
+            let padding_size = offs - all_bytes.len();
+
+            // Extend all_bytes with the calculated number of zero bytes
+            all_bytes.extend(std::iter::repeat(0).take(padding_size));
+        }
+
+        all_bytes.extend(bytes);
+
+        count += 1;
     }
+
+    if all_bytes.len() < dt.size as usize {
+        all_bytes.resize(dt.size as usize, 0);
+    }
+
+    Ok(all_bytes)
 }
 
 /// Serialize a variant properly for the controller, which will not be byte-aligned as compactly

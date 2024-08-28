@@ -206,7 +206,7 @@ impl MaxString {
         if let Some(end_index) = self.0.iter().position(|&c| c == 0x00) {
             String::from_utf8(self.0[..end_index].to_vec())
         } else {
-            Ok(String::from(""))
+            Ok(String::new())
         }
     }
 

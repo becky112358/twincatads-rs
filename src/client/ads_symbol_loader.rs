@@ -193,14 +193,9 @@ impl AdsSymbolCollection {
         &self,
         symbol_info: &AdsSymbolInfo,
     ) -> Option<AdsDataTypeInfo> {
-        if symbol_info.type_name.contains("OF") {
-            if let Some(start) = symbol_info.type_name.find("OF") {
-                let type_name = symbol_info.type_name[start + 3..].to_string();
-                self.data_types.get(&type_name).cloned()
-            } else {
-                // Should not reach here.
-                None
-            }
+        if let Some(start) = symbol_info.type_name.find("OF") {
+            let type_name = symbol_info.type_name[start + 3..].to_string();
+            self.data_types.get(&type_name).cloned()
         } else {
             if let Some(ret) = self.data_types.get(&symbol_info.type_name).cloned() {
                 Some(ret)
@@ -310,31 +305,28 @@ impl AdsSymbolCollection {
                 if symbol.is_structure {
                     // Or a more accurate structure check
                     // Recursive call for the nested field lookup
-                    let nested_field_result = self.get_symbol_info(&remaining_symbol_name);
-
-                    match nested_field_result {
-                        Ok(field) => Ok(field),
-                        Err(error) => Err(error),
-                    }
+                    self.get_symbol_info(&remaining_symbol_name)
                 } else {
                     // this was a request for a specific field
                     // Loop through the fields until we find the specific one we need.
 
                     let mut tmp_symbol = symbol.clone();
                     for field_name in tokens.iter().skip(2) {
-                        if let Some(dt) = self.get_fundamental_type_info(&tmp_symbol) {
-                            for field in dt.fields {
-                                if field.name == *field_name {
-                                    tmp_symbol = field.clone();
-                                }
-                            }
-                        } else {
-                            return Err(Error::new(
-                                ErrorKind::Other,
-                                format!(
+                        let dt = match self.get_fundamental_type_info(&tmp_symbol) {
+                            Some(dt) => dt,
+                            None => {
+                                return Err(Error::new(
+                                    ErrorKind::Other,
+                                    format!(
                                     "Failed to locate information for structure field {field_name}"
                                 ),
-                            ));
+                                ))
+                            }
+                        };
+                        for field in dt.fields {
+                            if field.name == *field_name {
+                                tmp_symbol = field.clone();
+                            }
                         }
                     }
 
@@ -404,8 +396,8 @@ impl AdsSymbolCollection {
 /// Extract a string from a byte stream. If the string cannot be
 /// extracted, a blank string is returned.
 fn extract_string_from_stream(bytes: &[u8]) -> String {
-    if let Ok(str) = std::str::from_utf8(bytes) {
-        str.to_string()
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        s.to_string()
     } else {
         String::new()
     }
@@ -435,47 +427,48 @@ fn parse_datatype_entry_field(
     let name_start = offset + datatype_entry_len;
     let name_end = name_start + item.nameLength as usize;
 
-    if let Ok(nm) = String::from_utf8(buffer[name_start..name_end].to_vec()) {
-        let mut ret = AdsSymbolInfo {
-            name: nm,
-            group_index: 0,
-            index_offset: 0,
-            size: item.size,
-            offset: item.offs,
-            type_id: item.dataType,
-            type_name: String::new(),
-            comment: String::new(),
-            is_structure: item.subItems > 0,
-            is_array: false,
-            array_dimensions: Vec::new(),
-        };
+    let nm = match String::from_utf8(buffer[name_start..name_end].to_vec()) {
+        Ok(nm) => nm,
+        Err(_) => return None,
+    };
 
-        let type_start = name_end + 1;
-        let type_end = type_start + item.typeLength as usize;
+    let mut ret = AdsSymbolInfo {
+        name: nm,
+        group_index: 0,
+        index_offset: 0,
+        size: item.size,
+        offset: item.offs,
+        type_id: item.dataType,
+        type_name: String::new(),
+        comment: String::new(),
+        is_structure: item.subItems > 0,
+        is_array: false,
+        array_dimensions: Vec::new(),
+    };
 
-        let comment_start = type_end + 1;
-        let comment_end = comment_start + item.commentLength as usize;
+    let type_start = name_end + 1;
+    let type_end = type_start + item.typeLength as usize;
 
-        if item.typeLength > 0 {
-            if let Ok(cmt) = String::from_utf8(buffer[type_start..type_end].to_vec()) {
-                ret.type_name = cmt;
-            }
+    let comment_start = type_end + 1;
+    let comment_end = comment_start + item.commentLength as usize;
+
+    if item.typeLength > 0 {
+        if let Ok(cmt) = String::from_utf8(buffer[type_start..type_end].to_vec()) {
+            ret.type_name = cmt;
         }
-        if item.commentLength > 0 {
-            if let Ok(cmt) = String::from_utf8(buffer[comment_start..comment_end].to_vec()) {
-                ret.comment = cmt;
-            }
-        }
-
-        ret.is_array = ret.type_name.contains("ARRAY");
-        if ret.is_array {
-            set_symbol_array_length(&mut ret);
-        }
-
-        Some(ret)
-    } else {
-        None
     }
+    if item.commentLength > 0 {
+        if let Ok(cmt) = String::from_utf8(buffer[comment_start..comment_end].to_vec()) {
+            ret.comment = cmt;
+        }
+    }
+
+    ret.is_array = ret.type_name.contains("ARRAY");
+    if ret.is_array {
+        set_symbol_array_length(&mut ret);
+    }
+
+    Some(ret)
 }
 
 fn parse_datatype_entry_item(
@@ -495,91 +488,90 @@ fn parse_datatype_entry_item(
     let name_start = offset + datatype_entry_len;
     let name_end = name_start + item.nameLength as usize;
 
-    if let Ok(nm) = String::from_utf8(buffer[name_start..name_end].to_vec()) {
-        let mut ret = AdsDataTypeInfo {
-            name: nm.clone(),
-            comment: String::new(),
-            entry_length: item.entryLength,
-            version: item.version,
-            size: item.size,
-            offset: item.offs,
-            data_type: item.dataType,
-            flags: item.flags,
-            num_array_dimensions: item.arrayDim,
-            num_fields: item.subItems,
-            array_data_size: 0,
-            array_dimensions: Vec::new(),
-            fields: Vec::new(),
-        };
+    let nm = match String::from_utf8(buffer[name_start..name_end].to_vec()) {
+        Ok(nm) => nm,
+        Err(_) => return None,
+    };
 
-        let type_start = name_end + 1;
-        let type_end = type_start + item.typeLength as usize;
+    let mut ret = AdsDataTypeInfo {
+        name: nm.clone(),
+        comment: String::new(),
+        entry_length: item.entryLength,
+        version: item.version,
+        size: item.size,
+        offset: item.offs,
+        data_type: item.dataType,
+        flags: item.flags,
+        num_array_dimensions: item.arrayDim,
+        num_fields: item.subItems,
+        array_data_size: 0,
+        array_dimensions: Vec::new(),
+        fields: Vec::new(),
+    };
 
-        let comment_start = type_end + 1;
-        let comment_end = comment_start + item.commentLength as usize;
+    let type_start = name_end + 1;
+    let type_end = type_start + item.typeLength as usize;
 
-        if comment_len > 0 {
-            if let Ok(cmt) = String::from_utf8(buffer[comment_start..comment_end].to_vec()) {
-                ret.comment = cmt;
-            }
+    let comment_start = type_end + 1;
+    let comment_end = comment_start + item.commentLength as usize;
+
+    if comment_len > 0 {
+        if let Ok(cmt) = String::from_utf8(buffer[comment_start..comment_end].to_vec()) {
+            ret.comment = cmt;
         }
-
-        //
-        // Information about array dimensions follows the comment section.
-        //
-        if ret.num_array_dimensions > 0 {
-            let mut array_info_offset = comment_end + 1;
-            let array_info_len: usize = std::mem::size_of::<AdsDatatypeArrayInfo>();
-
-            let mut arr_size = 1;
-            for _i in 0..ret.num_array_dimensions {
-                let array_info_end = array_info_offset + array_info_len;
-                let arr_info_item: &AdsDatatypeArrayInfo =
-                    unsafe { &*buffer[array_info_offset..array_info_end].as_ptr().cast() };
-
-                arr_size *= arr_info_item.elements;
-
-                ret.array_dimensions.push(arr_info_item.elements as usize);
-
-                array_info_offset += array_info_len;
-            }
-
-            ret.array_data_size = arr_size as usize;
-        }
-
-        //
-        // Pull out information about any fields in the structure, which will be located
-        // just after any array information and is a series of data type entries.
-        //
-        if ret.num_fields > 0 {
-            let array_info_len: usize = std::mem::size_of::<AdsDatatypeArrayInfo>();
-            let field_info_offset =
-                comment_end + 1 + (ret.num_array_dimensions as usize * array_info_len);
-
-            let mut field_item_offset = field_info_offset;
-            for _i in 0..ret.num_fields {
-                //log::info!("\tProcessing field item: {} of {}", i, ret.num_fields);
-
-                let entry_end = field_item_offset + datatype_entry_len;
-                let field_item: &AdsDatatypeEntry =
-                    unsafe { &*buffer[field_item_offset..entry_end].as_ptr().cast() };
-
-                if let Some(entry) =
-                    parse_datatype_entry_field(field_item, buffer, field_item_offset)
-                {
-                    ret.fields.push(entry);
-                } else {
-                    ret.fields.push(AdsSymbolInfo::default());
-                }
-
-                field_item_offset += field_item.entryLength as usize;
-            }
-        }
-
-        Some(ret)
-    } else {
-        None
     }
+
+    //
+    // Information about array dimensions follows the comment section.
+    //
+    if ret.num_array_dimensions > 0 {
+        let mut array_info_offset = comment_end + 1;
+        let array_info_len: usize = std::mem::size_of::<AdsDatatypeArrayInfo>();
+
+        let mut arr_size = 1;
+        for _i in 0..ret.num_array_dimensions {
+            let array_info_end = array_info_offset + array_info_len;
+            let arr_info_item: &AdsDatatypeArrayInfo =
+                unsafe { &*buffer[array_info_offset..array_info_end].as_ptr().cast() };
+
+            arr_size *= arr_info_item.elements;
+
+            ret.array_dimensions.push(arr_info_item.elements as usize);
+
+            array_info_offset += array_info_len;
+        }
+
+        ret.array_data_size = arr_size as usize;
+    }
+
+    //
+    // Pull out information about any fields in the structure, which will be located
+    // just after any array information and is a series of data type entries.
+    //
+    if ret.num_fields > 0 {
+        let array_info_len: usize = std::mem::size_of::<AdsDatatypeArrayInfo>();
+        let field_info_offset =
+            comment_end + 1 + (ret.num_array_dimensions as usize * array_info_len);
+
+        let mut field_item_offset = field_info_offset;
+        for _i in 0..ret.num_fields {
+            //log::info!("\tProcessing field item: {} of {}", i, ret.num_fields);
+
+            let entry_end = field_item_offset + datatype_entry_len;
+            let field_item: &AdsDatatypeEntry =
+                unsafe { &*buffer[field_item_offset..entry_end].as_ptr().cast() };
+
+            if let Some(entry) = parse_datatype_entry_field(field_item, buffer, field_item_offset) {
+                ret.fields.push(entry);
+            } else {
+                ret.fields.push(AdsSymbolInfo::default());
+            }
+
+            field_item_offset += field_item.entryLength as usize;
+        }
+    }
+
+    Some(ret)
 }
 
 fn parse_datatypes(buffer: &[u8]) -> BTreeMap<String, AdsDataTypeInfo> {
