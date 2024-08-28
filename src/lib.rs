@@ -5,8 +5,6 @@
 // pull in the bindings that were generated into the target build directory.
 // this will be something like target/build/bind-test@#$%^%^##/out/bindings.rs
 
-// include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
-
 #[cfg(target_arch = "x86")]
 include!(concat!(env!("OUT_DIR"), "/bindings_32.rs"));
 
@@ -16,7 +14,6 @@ include!(concat!(env!("OUT_DIR"), "/bindings_64.rs"));
 #[macro_use]
 extern crate lazy_static;
 
-// Pull in adcs client module.
 pub mod client;
 
 impl Default for AmsNetId_ {

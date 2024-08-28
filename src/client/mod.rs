@@ -10,9 +10,6 @@ pub mod ads_symbol_loader;
 pub mod adsclient;
 pub mod client_types;
 
-//
-// Re-export items to make importing easier.
-//
 pub use adsclient::AdsClient;
 pub use client_types::{
     AdsClientNotification, AdsState, MaxString, RouterNotificationEventInfo, RouterState,

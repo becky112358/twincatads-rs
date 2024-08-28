@@ -6,22 +6,19 @@
 //! easier for a user program to automatically add groups/domains of
 //! symbols instead of hammering out each individual symbol.
 
+use std::collections::{BTreeMap, HashMap};
 use std::io::{Error, ErrorKind, Result};
-use std::{collections::BTreeMap, collections::HashMap};
-
-use zerocopy::FromBytes;
+use std::os::raw::c_void;
 
 use serde::Deserialize;
-use std::os::raw::c_void; // c_void, etc
+use zerocopy::FromBytes;
 
 // Pull in imports from the top crate.
-use crate::AdsSymbolEntry;
-use crate::AdsSymbolUploadInfo2;
-use crate::AdsSyncReadReqEx2;
-use crate::ADSIGRP_SYM_DT_UPLOAD;
-use crate::ADSIGRP_SYM_UPLOAD;
-use crate::ADSIGRP_SYM_UPLOADINFO2;
-use crate::{AdsDatatypeArrayInfo, AdsDatatypeEntry, AmsAddr, ADSERR_NOERR};
+use crate::{
+    AdsDatatypeArrayInfo, AdsDatatypeEntry, AdsSymbolEntry, AdsSymbolUploadInfo2,
+    AdsSyncReadReqEx2, AmsAddr, ADSERR_NOERR, ADSIGRP_SYM_DT_UPLOAD, ADSIGRP_SYM_UPLOAD,
+    ADSIGRP_SYM_UPLOADINFO2,
+};
 
 /// Stores information about a symbol parsed out from the
 /// controller.

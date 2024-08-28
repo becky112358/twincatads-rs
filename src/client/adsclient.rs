@@ -22,45 +22,28 @@ use std::time;
 
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
-use log::{error, info};
-use tokio::sync::mpsc::{self, Receiver, Sender};
-use tokio::task::JoinHandle;
-
-use zerocopy::{AsBytes, FromBytes};
-
 use mechutil::notifier::Notifier;
 use mechutil::variant::{self, VariantValue};
+use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::task::JoinHandle;
+use zerocopy::{AsBytes, FromBytes};
 
 use crate::client::ads_symbol_loader;
 use crate::client::client_types::EventInfoType;
 use crate::nAdsTransMode_ADSTRANS_SERVERONCHA;
-use crate::AdsGetDllVersion;
-use crate::AdsGetLocalAddress;
-use crate::AdsNotificationAttrib;
-use crate::AdsNotificationAttrib__bindgen_ty_1;
-use crate::AdsNotificationHeader;
-use crate::AdsPortCloseEx;
-use crate::AdsPortOpenEx;
-use crate::AdsSymbolEntry;
-use crate::AdsSyncAddDeviceNotificationReqEx;
-use crate::AdsSyncDelDeviceNotificationReqEx;
-use crate::AdsSyncReadReqEx2;
-use crate::AdsSyncReadWriteReqEx2;
-use crate::AdsSyncWriteReqEx;
-use crate::ADSIGRP_DEVICE_DATA;
-use crate::ADSIGRP_SYM_HNDBYNAME;
-use crate::ADSIGRP_SYM_INFOBYNAMEEX;
-use crate::ADSIGRP_SYM_VALBYHND;
-use crate::ADSIOFFS_DEVDATA_ADSSTATE;
 use crate::{
-    AdsAmsRegisterRouterNotification, AdsAmsUnRegisterRouterNotification, AdsPortClose,
-    AdsSyncAddDeviceNotificationReq, AdsSyncDelDeviceNotificationReq, AmsAddr, ADSIGRP_SYM_VERSION,
+    AdsAmsRegisterRouterNotification, AdsAmsUnRegisterRouterNotification, AdsGetDllVersion,
+    AdsGetLocalAddress, AdsNotificationAttrib, AdsNotificationAttrib__bindgen_ty_1,
+    AdsNotificationHeader, AdsPortClose, AdsPortCloseEx, AdsPortOpenEx, AdsSymbolEntry,
+    AdsSyncAddDeviceNotificationReq, AdsSyncAddDeviceNotificationReqEx,
+    AdsSyncDelDeviceNotificationReq, AdsSyncDelDeviceNotificationReqEx, AdsSyncReadReqEx2,
+    AdsSyncReadWriteReqEx2, AdsSyncWriteReqEx, AmsAddr, ADSIGRP_DEVICE_DATA, ADSIGRP_SYM_HNDBYNAME,
+    ADSIGRP_SYM_INFOBYNAMEEX, ADSIGRP_SYM_VALBYHND, ADSIGRP_SYM_VERSION, ADSIOFFS_DEVDATA_ADSSTATE,
 };
 
+use super::ads_data::{self, serialize, vec_to_string, AdsDataTypeId};
 use super::ads_symbol_loader::{AdsDataTypeInfo, AdsSymbolCollection, AdsSymbolInfo};
 use super::client_types::{AdsClientNotification, RegisteredSymbol, RouterNotificationEventInfo};
-
-use super::ads_data::{self, serialize, vec_to_string, AdsDataTypeId};
 
 #[allow(dead_code)]
 struct SymbolManager {
@@ -160,9 +143,10 @@ fn get_last_registered_symbol() -> Option<RegisteredSymbol> {
 fn add_registered_symbol(s: RegisteredSymbol) {
     let mut mutex = SYMBOL_MANAGER.registered_symbols.lock().unwrap();
 
-    info!(
+    log::info!(
         "Adding register symbol {} with handle {} ",
-        s.name, s.handle
+        s.name,
+        s.handle
     );
     mutex.push(s);
 }
@@ -377,7 +361,7 @@ impl AdsClient {
 
                     loop {
                         if shutdown_signal_clone.load(Ordering::SeqCst) {
-                            info!(
+                            log::info!(
                                 "AdsClient: shutdown signal received, exiting notification thread."
                             );
                             break;
@@ -416,7 +400,7 @@ impl AdsClient {
                                                                     .send(notification)
                                                                     .await
                                                                 {
-                                                                    error!("Failed to send notification on {} to parent with error: {}",
+                                                                    log::error!("Failed to send notification on {} to parent with error: {}",
                                                                         symbol.name,
                                                                         err
                                                                     );
@@ -446,7 +430,7 @@ impl AdsClient {
                                                     if let Err(err) =
                                                         notification_tx.send(notification).await
                                                     {
-                                                        error!("Failed to send ads state notification to parent with error: {}", 
+                                                        log::error!("Failed to send ads state notification to parent with error: {}", 
                                                             err
                                                         );
                                                     }
@@ -466,7 +450,7 @@ impl AdsClient {
                                                     if let Err(err) =
                                                         notification_tx.send(notification).await
                                                     {
-                                                        error!("Failed to send router state notification to parent with error: {}", 
+                                                        log::error!("Failed to send router state notification to parent with error: {}", 
                                                             err
                                                         );
                                                     }
@@ -483,7 +467,7 @@ impl AdsClient {
                                                 if let Err(err) =
                                                     notification_tx.send(notification).await
                                                 {
-                                                    error!("Failed to send symbol table notification to parent with error: {}", 
+                                                    log::error!("Failed to send symbol table notification to parent with error: {}", 
                                                         err
                                                     );
                                                 }
@@ -496,7 +480,7 @@ impl AdsClient {
                                         let _ = tokio::time::sleep(ten_millis).await;
                                     }
                                     None => {
-                                        info!("Notification Sender has disconnected or faulted. No more notifications will be received.");
+                                        log::info!("Notification Sender has disconnected or faulted. No more notifications will be received.");
                                         break;
                                     }
                                 };
@@ -540,7 +524,7 @@ impl AdsClient {
         self.unregister_all_symbols();
         self.unregister_symbol_table_notification();
 
-        info!("AdsClient closing connection to ADS Router...");
+        log::info!("AdsClient closing connection to ADS Router...");
         if self.current_comms_port != 0 {
             unsafe {
                 // Close the Ex function port.
@@ -552,22 +536,22 @@ impl AdsClient {
             self.current_comms_port = 0;
         }
 
-        info!("AdsClient stopping notification thread...");
+        log::info!("AdsClient stopping notification thread...");
         self.shutdown_signal.store(true, Ordering::SeqCst);
         if let Some(jh) = self.notification_join_handle.take() {
             match jh.await {
-                Ok(_) => info!("AdsClient notification thread closed cleanly."),
-                Err(err) => error!(
+                Ok(_) => log::info!("AdsClient notification thread closed cleanly."),
+                Err(err) => log::error!(
                     "Failed to gracefully shut down notification thread: {:?}",
                     err
                 ),
             }
         }
 
-        info!("AdsClient clear symbol entries...");
+        log::info!("AdsClient clear symbol entries...");
         self.symbol_entries.clear();
 
-        info!("AdsClient finalize complete.");
+        log::info!("AdsClient finalize complete.");
     }
 
     fn register_state_notification(&mut self) {
@@ -1531,9 +1515,10 @@ impl AdsClient {
                         // to the C library you just wrap the name in Some.
                         //
 
-                        info!(
+                        log::info!(
                             "Registering notification for {} with handle {}",
-                            symbol_name, handle
+                            symbol_name,
+                            handle
                         );
 
                         let notitication_err = AdsSyncAddDeviceNotificationReqEx(
@@ -1596,10 +1581,10 @@ impl AdsClient {
                         format!("Failed to remove notification: {notitication_err}"),
                     ))
                 } else {
-                    info!("Removed notification for {}", symbol_name);
+                    log::info!("Removed notification for {}", symbol_name);
 
                     if let Err(err) = remove_registered_symbol_by_name(symbol_name) {
-                        error!(
+                        log::error!(
                             "Failed to remove notification symbol from local registry: {}",
                             err
                         );
@@ -1610,7 +1595,7 @@ impl AdsClient {
             },
             Err(err) => {
                 if let Err(err) = remove_registered_symbol_by_name(symbol_name) {
-                    error!(
+                    log::error!(
                         "Failed to remove notification symbol from local registry: {}",
                         err
                     );
@@ -1985,7 +1970,7 @@ unsafe fn handle_ads_symbol_table_callback(
 pub fn get_dll_version() -> i32 {
     unsafe {
         let val: i32 = AdsGetDllVersion();
-        info!("The ADS Dll version is {}", val);
+        log::info!("The ADS Dll version is {}", val);
         val
     }
 }

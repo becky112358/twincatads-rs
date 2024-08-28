@@ -6,12 +6,12 @@
 // -----
 //
 //
+use std::convert::TryFrom;
 use std::io::{Error, ErrorKind};
 
 use indexmap::IndexMap;
 use mechutil::variant::VariantValue;
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
 use zerocopy::{AsBytes, FromBytes};
 
 use super::ads_symbol_loader::{AdsSymbolCollection, AdsSymbolInfo};

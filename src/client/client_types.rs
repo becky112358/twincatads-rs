@@ -6,15 +6,14 @@
 // -----
 //
 //
-
-//! Types used through the client module.
-
-use super::ads_data::AdsDataTypeId;
-use mechutil::variant::VariantValue;
-use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::time::{Duration, Instant, SystemTime};
+
+use mechutil::variant::VariantValue;
+use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 use zerocopy_derive::{AsBytes, FromBytes, FromZeroes};
+
+use super::ads_data::AdsDataTypeId;
 
 lazy_static! {
     /// A static reference Instant, initialized at application start.
