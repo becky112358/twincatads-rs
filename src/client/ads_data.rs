@@ -6,8 +6,8 @@
 // -----
 //
 //
+use std::io::{Error, ErrorKind};
 
-use anyhow::anyhow;
 use indexmap::IndexMap;
 use mechutil::variant::VariantValue;
 use serde::{Deserialize, Serialize};
@@ -79,14 +79,20 @@ where
 
 /// Convert a vector of bytes to a string and trims off suplerflous bytes
 /// sent by the PLC.
-pub fn vec_to_string(s: &[u8]) -> Result<String, anyhow::Error> {
+pub fn vec_to_string(s: &[u8]) -> std::io::Result<String> {
     if let Some(end_index) = s.iter().position(|&c| c == 0x00) {
         match String::from_utf8(s[..end_index].to_vec()) {
             Ok(ret) => Ok(ret),
-            Err(err) => Err(anyhow!("Failed to convert string: {}", err)),
+            Err(err) => Err(Error::new(
+                ErrorKind::Other,
+                format!("Failed to convert string: {err}"),
+            )),
         }
     } else {
-        Err(anyhow!("String is not null-terminated."))
+        Err(Error::new(
+            ErrorKind::InvalidInput,
+            "String is not null-terminated",
+        ))
     }
 }
 
@@ -364,7 +370,7 @@ pub fn serialize_array(
     symbol_collection: &AdsSymbolCollection,
     symbol_info: &AdsSymbolInfo,
     value: &VariantValue,
-) -> Result<Vec<u8>, anyhow::Error> {
+) -> std::io::Result<Vec<u8>> {
     match value {
         VariantValue::Array(arr) => {
             let mut all_bytes = Vec::new();
@@ -375,7 +381,10 @@ pub fn serialize_array(
                         all_bytes.extend(bytes);
                     }
                     Err(err) => {
-                        return Err(anyhow!("Error serializing an array index : {}", err));
+                        return Err(Error::new(
+                            ErrorKind::Other,
+                            format!("Error serializing an array index : {err}"),
+                        ));
                     }
                 }
             }
@@ -386,7 +395,10 @@ pub fn serialize_array(
 
             Ok(all_bytes)
         }
-        _ => Err(anyhow!("Expected VariantValue::Object for serialization")),
+        _ => Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Expected VariantValue::Object for serialization",
+        )),
     }
 }
 
@@ -397,7 +409,7 @@ pub fn serialize_struct(
     symbol_collection: &AdsSymbolCollection,
     symbol_info: &AdsSymbolInfo,
     value: &VariantValue,
-) -> Result<Vec<u8>, anyhow::Error> {
+) -> std::io::Result<Vec<u8>> {
     match value {
         VariantValue::Object(boxed_map) => {
             let mut all_bytes = Vec::new();
@@ -425,16 +437,18 @@ pub fn serialize_struct(
                                 all_bytes.extend(bytes);
                             }
                             Err(err) => {
-                                return Err(anyhow!("Error serializing field {} : {}", key, err));
+                                return Err(Error::new(
+                                    ErrorKind::Other,
+                                    format!("Error serializing field {key} : {err}"),
+                                ));
                             }
                         }
 
                         count += 1;
                     } else {
-                        return Err(anyhow!(
-                            "count {} >= files length {}",
-                            count,
-                            dt.fields.len()
+                        return Err(Error::new(
+                            ErrorKind::Other,
+                            format!("count {count} >= files length {}", dt.fields.len()),
                         ));
                     }
                 }
@@ -445,13 +459,19 @@ pub fn serialize_struct(
 
                 Ok(all_bytes)
             } else {
-                Err(anyhow!(
-                    "Failed to get type information for structure {}",
-                    symbol_info.name
+                Err(Error::new(
+                    ErrorKind::Other,
+                    format!(
+                        "Failed to get type information for structure {}",
+                        symbol_info.name
+                    ),
                 ))
             }
         }
-        _ => Err(anyhow!("Expected VariantValue::Object for serialization")),
+        _ => Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Expected VariantValue::Object for serialization",
+        )),
     }
 }
 
@@ -462,7 +482,7 @@ pub fn serialize(
     symbol_collection: &AdsSymbolCollection,
     symbol_info: &AdsSymbolInfo,
     value: &VariantValue,
-) -> Result<Vec<u8>, anyhow::Error> {
+) -> std::io::Result<Vec<u8>> {
     match value {
         VariantValue::Array(_) => serialize_array(symbol_collection, symbol_info, value),
         VariantValue::Object(_) => serialize_struct(symbol_collection, symbol_info, value),
@@ -481,9 +501,12 @@ pub fn serialize(
 
 /// Serialize a POD value into a byte stream that can be transmitted
 /// over a connection.
-fn serialize_value(value: &VariantValue) -> Result<Vec<u8>, anyhow::Error> {
+fn serialize_value(value: &VariantValue) -> std::io::Result<Vec<u8>> {
     match value {
-        VariantValue::Null => Err(anyhow!("Cannot serialize a NULL value!")),
+        VariantValue::Null => Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Cannot serialize a NULL value!",
+        )),
         VariantValue::Bit(s) => {
             if *s {
                 Ok(vec![1])
@@ -501,6 +524,9 @@ fn serialize_value(value: &VariantValue) -> Result<Vec<u8>, anyhow::Error> {
         VariantValue::UInt64(s) => Ok(s.to_le_bytes().to_vec()),
         VariantValue::Real32(s) => Ok(s.to_le_bytes().to_vec()),
         VariantValue::Real64(s) => Ok(s.to_le_bytes().to_vec()),
-        _ => Err(anyhow!("This function not intended for all but POD types.")),
+        _ => Err(Error::new(
+            ErrorKind::InvalidInput,
+            "This function not intended for all but POD types.",
+        )),
     }
 }

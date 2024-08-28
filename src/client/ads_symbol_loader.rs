@@ -6,14 +6,13 @@
 //! easier for a user program to automatically add groups/domains of
 //! symbols instead of hammering out each individual symbol.
 
+use std::io::{Error, ErrorKind, Result};
 use std::{collections::BTreeMap, collections::HashMap};
 
 use zerocopy::FromBytes;
 
 use serde::Deserialize;
 use std::os::raw::c_void; // c_void, etc
-
-use anyhow::anyhow;
 
 // Pull in imports from the top crate.
 use crate::AdsSymbolEntry;
@@ -77,7 +76,7 @@ pub struct AdsDataTypeInfo {
 // fn ads_data_type_info_from_type_id_code(
 //     type_id: u32,
 //     symbol_info : &AdsSymbolInfo
-// ) -> Result<AdsDataTypeInfo, anyhow::Error> {
+// ) -> Result<AdsDataTypeInfo> {
 
 //     if let Ok(dt) = AdsDataTypeId::try_from(value) {
 
@@ -285,13 +284,18 @@ impl AdsSymbolCollection {
 
     /// Get the symbol info for a fully-qualified tag name. This also handles cases where
     /// the symbol is a field of a structure (including nested structures).
-    pub fn get_symbol_info(&self, symbol_name: &str) -> Result<AdsSymbolInfo, anyhow::Error> {
+    pub fn get_symbol_info(&self, symbol_name: &str) -> Result<AdsSymbolInfo> {
         // Extracts the portion of the symbol name up to the second period, if present.
         let processed_symbol_name = symbol_name.splitn(3, '.').collect::<Vec<&str>>();
         let valid_symbol_name = match processed_symbol_name.as_slice() {
             [first, second, ..] => format!("{}.{}", first, second), // Join the first two segments
             [single] => single.to_string(),                         // Only one segment, use as is
-            _ => return Err(anyhow!("Invalid symbol name format")),
+            _ => {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "Invalid symbol name format",
+                ))
+            }
         };
 
         if self.symbols.contains_key(&valid_symbol_name) {
@@ -328,9 +332,11 @@ impl AdsSymbolCollection {
                                 }
                             }
                         } else {
-                            return Err(anyhow!(
-                                "Failed to locate information for structure field {}",
-                                field_name
+                            return Err(Error::new(
+                                ErrorKind::Other,
+                                format!(
+                                    "Failed to locate information for structure field {field_name}"
+                                ),
                             ));
                         }
                     }
@@ -339,21 +345,21 @@ impl AdsSymbolCollection {
                 }
             }
         } else {
-            Err(anyhow!(
-                "Cannot locate any information for symbol {}",
-                symbol_name
+            Err(Error::new(
+                ErrorKind::Other,
+                format!("Cannot locate any information for symbol {symbol_name}"),
             ))
         }
     }
 
-    // pub fn get_symbol_info(&self, symbol_name : &str) -> Result<AdsSymbolInfo, anyhow::Error> {
+    // pub fn get_symbol_info(&self, symbol_name : &str) -> Result<AdsSymbolInfo> {
 
     //     // Extracts the portion of the symbol name up to the second period, if present.
     //     let processed_symbol_name = symbol_name.splitn(3, '.').collect::<Vec<&str>>();
     //     let valid_symbol_name = match processed_symbol_name.as_slice() {
     //         [first, second, ..] => format!("{}.{}", first, second), // Join the first two segments
     //         [single] => single.to_string(),  // Only one segment, use as is
-    //         _ => return Err(anyhow!("Invalid symbol name format")),
+    //         _ => return Err(Error::new(ErrorKind::InvalidInput, "Invalid symbol name format")),
     //     };
 
     //     if self.symbols.contains_key(&valid_symbol_name) {
@@ -382,17 +388,17 @@ impl AdsSymbolCollection {
     //                     }
     //                 }
 
-    //                 return Err(anyhow!("Failed to locate information for structure field {}", field_name));
+    //                 return Err(Error::new(ErrorKind::Other, format!("Failed to locate information for structure field {field_name}")));
     //             }
     //             else {
-    //                 return Err(anyhow!("Failed to locate information for structure field {}", field_name));
+    //                 return Err(Error::new(ErrorKind::Other, format!("Failed to locate information for structure field {field_name}")));
     //             }
 
     //         }
 
     //     }
     //     else {
-    //         return Err(anyhow!("Cannot location any information for symbol {}", symbol_name));
+    //         return Err(Error::new(ErrorKind::Other, format!("Cannot location any information for symbol {symbol_name}")));
     //     }
 
     //}

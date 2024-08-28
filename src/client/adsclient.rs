@@ -11,20 +11,21 @@
 //! values and thread-safe channels. The ads_symbol_loader module is used
 //! to upload symbol information from the target.
 
-use indexmap::IndexMap;
-use lazy_static::lazy_static;
-use log::{error, info};
 use std::collections::HashMap;
-use std::os::raw::c_void; // c_void, etc
+use std::io::{Error, ErrorKind, Result};
+use std::os::raw::c_void;
 use std::slice;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time;
+
+use indexmap::IndexMap;
+use lazy_static::lazy_static;
+use log::{error, info};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::task::JoinHandle;
 
-use anyhow::anyhow;
 use zerocopy::{AsBytes, FromBytes};
 
 use mechutil::notifier::Notifier;
@@ -90,7 +91,7 @@ lazy_static! {
 }
 
 /// Locate a symbol registered for on value change notification by its name.
-fn get_registered_symbol_by_name(symbol_name: &str) -> Result<RegisteredSymbol, anyhow::Error> {
+fn get_registered_symbol_by_name(symbol_name: &str) -> Result<RegisteredSymbol> {
     let guard = SYMBOL_MANAGER.registered_symbols.lock().unwrap();
 
     for i in 0..guard.len() {
@@ -101,14 +102,14 @@ fn get_registered_symbol_by_name(symbol_name: &str) -> Result<RegisteredSymbol, 
         }
     }
 
-    Err(anyhow!(
-        "Symbol name {} is not registered in the notification collection.",
-        symbol_name
+    Err(Error::new(
+        ErrorKind::Other,
+        format!("Symbol name {symbol_name} is not registered in the notification collection"),
     ))
 }
 
 /// Remove a symbol registered for on value change notification from the list.
-fn remove_registered_symbol_by_name(symbol_name: &str) -> Result<(), anyhow::Error> {
+fn remove_registered_symbol_by_name(symbol_name: &str) -> Result<()> {
     let mut guard = SYMBOL_MANAGER.registered_symbols.lock().unwrap();
 
     for i in 0..guard.len() {
@@ -120,14 +121,14 @@ fn remove_registered_symbol_by_name(symbol_name: &str) -> Result<(), anyhow::Err
         }
     }
 
-    Err(anyhow!(
-        "Failed to locate symbol name {} to remove.",
-        symbol_name
+    Err(Error::new(
+        ErrorKind::Other,
+        format!("Failed to locate symbol name {symbol_name} to remove"),
     ))
 }
 
 /// Finds and returns the symbol registered for on value change notification from the global list.
-fn get_registered_symbol_by_handle(handle: u32) -> Result<RegisteredSymbol, anyhow::Error> {
+fn get_registered_symbol_by_handle(handle: u32) -> Result<RegisteredSymbol> {
     let guard = SYMBOL_MANAGER.registered_symbols.lock().unwrap();
 
     for i in 0..guard.len() {
@@ -138,9 +139,9 @@ fn get_registered_symbol_by_handle(handle: u32) -> Result<RegisteredSymbol, anyh
         }
     }
 
-    Err(anyhow!(
-        "Symbol handle {} is not registered in the notification collection.",
-        handle
+    Err(Error::new(
+        ErrorKind::Other,
+        format!("Symbol handle {handle} is not registered in the notification collection"),
     ))
 }
 
@@ -329,7 +330,7 @@ impl AdsClient {
     /// ## Returns:
     /// - Ok if successful. The connection is ready to use.
     /// - Err if fails to make connection to target device. The connection is completely closed and initialize needs to be called again.
-    pub fn initialize(&mut self) -> Result<(), anyhow::Error> {
+    pub fn initialize(&mut self) -> Result<()> {
         self.symbol_entries.clear();
 
         if self.current_comms_port != 0 {
@@ -525,7 +526,7 @@ impl AdsClient {
                     AdsPortClose();
                 }
 
-                Err(anyhow!("{}", err))
+                Err(err)
             }
         }
     }
@@ -739,14 +740,15 @@ impl AdsClient {
 
     /// Upload and buffer all available symbols from the controller.
     #[allow(dead_code)]
-    pub fn upload_all_symbols(&mut self) -> Result<(), anyhow::Error> {
+    pub fn upload_all_symbols(&mut self) -> Result<()> {
         if let Some(res) = ads_symbol_loader::upload_symbols(&self.address, self.current_comms_port)
         {
             self.symbol_collection = res;
             Ok(())
         } else {
-            Err(anyhow!(
-                "Failed to upload symbols, which indicates a failure to connect to the device."
+            Err(Error::new(
+                ErrorKind::Other,
+                "Failed to upload symbols, which indicates a failure to connect to the device",
             ))
         }
     }
@@ -769,7 +771,7 @@ impl AdsClient {
     /// Return the handle for a symbol in the PLC, it it exists.
     /// Returns handle > 0 if found, 0 if not.    
     #[allow(dead_code)]
-    fn get_handle_by_name(&mut self, symbol_name: &str) -> Result<u32, anyhow::Error> {
+    fn get_handle_by_name(&mut self, symbol_name: &str) -> Result<u32> {
         let raw_address = &mut self.address as *mut AmsAddr;
         let mut handle: u32 = 0;
         let ptr_handle = &mut handle as *mut u32 as *mut c_void;
@@ -791,10 +793,9 @@ impl AdsClient {
             );
 
             if err != 0 {
-                Err(anyhow!(
-                    "Error reading handle for symbol {}: ADS error code {}",
-                    symbol_name,
-                    err
+                Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Error reading handle for symbol {symbol_name}: ADS error code {err}",),
                 ))
             } else {
                 Ok(handle)
@@ -804,10 +805,7 @@ impl AdsClient {
 
     /// Upload information about a symbol from the PLC
     #[allow(dead_code)]
-    pub fn upload_symbol_entry(
-        &mut self,
-        symbol_name: &str,
-    ) -> Result<AdsSymbolEntry, anyhow::Error> {
+    pub fn upload_symbol_entry(&mut self, symbol_name: &str) -> Result<AdsSymbolEntry> {
         let raw_address = &mut self.address as *mut AmsAddr;
         let mut handle: u32 = 0;
         let ptr_handle = &mut handle as *mut u32 as *mut c_void;
@@ -845,7 +843,10 @@ impl AdsClient {
             );
 
             if err != 0 {
-                Err(anyhow!("Error reading symbol: ADS error code {}", err))
+                Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Error reading symbol: ADS error code {err}"),
+                ))
             } else {
                 let info_err = AdsSyncReadWriteReqEx2(
                     self.current_comms_port,
@@ -862,7 +863,10 @@ impl AdsClient {
                 if info_err == 0 {
                     Ok(symbol_entry)
                 } else {
-                    Err(anyhow!("Error reading symbol: ADS error code {}", err))
+                    Err(Error::new(
+                        ErrorKind::Other,
+                        format!("Error reading symbol: ADS error code {err}"),
+                    ))
                 }
             }
         }
@@ -878,7 +882,7 @@ impl AdsClient {
     /// to ensure that the symbol info is uploaded from the PLC.
     ///
     /// Buffer entry information is cleared any time the connection is lost.
-    pub fn get_symbol_entry(&mut self, symbol_name: &str) -> Result<AdsSymbolEntry, anyhow::Error> {
+    pub fn get_symbol_entry(&mut self, symbol_name: &str) -> Result<AdsSymbolEntry> {
         if self.symbol_entries.contains_key(symbol_name) {
             Ok(self.symbol_entries[symbol_name])
         } else {
@@ -888,7 +892,7 @@ impl AdsClient {
 
     /// Synchronous write of a value to the target PLC as a stream of bytes.
     /// This is the primaruy function for writing any value to the PLC.
-    fn write_raw_bytes(&mut self, symbol_name: &str, bytes: &[u8]) -> Result<(), anyhow::Error> {
+    fn write_raw_bytes(&mut self, symbol_name: &str, bytes: &[u8]) -> Result<()> {
         let symbol_information = self.get_symbol_entry(symbol_name);
         match symbol_information {
             Ok(info) => {
@@ -910,27 +914,25 @@ impl AdsClient {
                     );
 
                     if rc != 0 {
-                        Err(anyhow!(
-                            "Failed to write symbol {} with error {}",
-                            symbol_name,
-                            rc
+                        Err(Error::new(
+                            ErrorKind::Other,
+                            format!("Failed to write symbol {symbol_name} with error {rc}"),
                         ))
                     } else {
                         Ok(())
                     }
                 }
             }
-            Err(err) => Err(anyhow!(
-                "Failed to read information for symbol {} : {}",
-                symbol_name,
-                err
+            Err(err) => Err(Error::new(
+                ErrorKind::Other,
+                format!("Failed to read information for symbol {symbol_name} : {err}"),
             )),
         }
     }
 
     /// Synchrnous read of a value in the target PLC, returned as a stream of bytes.
     /// This is the base function for reading any value from the PLC.
-    fn read_raw_bytes(&mut self, symbol_name: &str) -> Result<Vec<u8>, anyhow::Error> {
+    fn read_raw_bytes(&mut self, symbol_name: &str) -> Result<Vec<u8>> {
         let raw_address = &mut self.address as *mut AmsAddr;
         // The "handle" or id within the controller that identifies a symbol.
         let mut handle: u32 = 0;
@@ -962,7 +964,10 @@ impl AdsClient {
                     if err != 0 {
                         // an error occurred.
 
-                        Err(anyhow!("Error {} occurred!", err))
+                        Err(Error::new(
+                            ErrorKind::Other,
+                            format!("Error {err} occurred!"),
+                        ))
                     } else {
                         // Create a buffer of the appropriate sise, filled with 0's.
                         let mut buffer = vec![0u8; info.size as usize];
@@ -981,9 +986,9 @@ impl AdsClient {
 
                         if read_err != 0 {
                             // TODO: convert error code to error string.
-                            Err(anyhow!(
-                                "Error {} occurred reading value into buffer",
-                                read_err
+                            Err(Error::new(
+                                ErrorKind::Other,
+                                format!("Error {read_err} occurred reading value into buffer",),
                             ))
                         } else {
                             Ok(buffer)
@@ -991,20 +996,16 @@ impl AdsClient {
                     }
                 }
             }
-            Err(err) => Err(anyhow!(
-                "Error : could not obtain handle to symbol {} : {}",
-                symbol_name,
-                err
+            Err(err) => Err(Error::new(
+                ErrorKind::Other,
+                format!("Error : could not obtain handle to symbol {symbol_name} : {err}",),
             )),
         }
     }
 
     /// Synchronous read of a symbol based upon its name in the PLC.
     /// Complete, fully-qualified name required.
-    pub fn read_symbol_by_name(
-        &mut self,
-        symbol_name: &str,
-    ) -> Result<variant::VariantValue, anyhow::Error> {
+    pub fn read_symbol_by_name(&mut self, symbol_name: &str) -> Result<variant::VariantValue> {
         match self.read_raw_bytes(symbol_name) {
             Ok(buffer) => {
                 //log::debug!("RES {} BUFFER: {:?}", buffer.len(), buffer);
@@ -1024,22 +1025,26 @@ impl AdsClient {
                                 ) {
                                     Ok(ret)
                                 } else {
-                                    Err(anyhow!("Failed to read symbol: {}", symbol_name))
+                                    Err(Error::new(
+                                        ErrorKind::Other,
+                                        format!("Failed to read symbol: {symbol_name}"),
+                                    ))
                                 }
                             } else {
-                                Err(anyhow!(
-                                    "Failed to find symbol {} in uploaded symbol table.",
-                                    symbol_name
+                                Err(Error::new(
+                                    ErrorKind::NotFound,
+                                    format!(
+                                    "Failed to find symbol {symbol_name} in uploaded symbol table"
+                                ),
                                 ))
                             }
                         }
-                        Err(err) => Err(anyhow!(
-                            "Unsupported type {} for symbol: {}",
-                            err,
-                            symbol_name
+                        Err(err) => Err(Error::new(
+                            ErrorKind::Other,
+                            format!("Unsupported type {err} for symbol: {symbol_name}"),
                         )),
                     },
-                    Err(err) => Err(anyhow!("{}", err)),
+                    Err(err) => Err(err),
                 }
             }
             Err(err) => Err(err),
@@ -1056,46 +1061,48 @@ impl AdsClient {
     pub fn read_symbol_value<T: AsBytes + FromBytes + Default>(
         &mut self,
         symbol_name: &str,
-    ) -> Result<T, anyhow::Error> {
+    ) -> Result<T> {
         match self.read_raw_bytes(symbol_name) {
             Ok(buffer) => {
                 // Ensure buffer is large enough to contain T
                 if buffer.len() < std::mem::size_of::<T>() {
-                    return Err(anyhow!(
-                        "Buffer size {} is too small for type size {}",
-                        buffer.len(),
-                        std::mem::size_of::<T>()
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        format!(
+                            "Buffer size {} is too small for type size {}",
+                            buffer.len(),
+                            std::mem::size_of::<T>()
+                        ),
                     ));
                 }
 
                 // Use ZeroCopy to convert the buffer into T
                 match T::read_from(&*buffer) {
                     Some(value) => Ok(value),
-                    None => Err(anyhow!(
-                        "Failed to convert buffer to type. Buffer size: {}",
-                        buffer.len()
+                    None => Err(Error::new(
+                        ErrorKind::Other,
+                        format!(
+                            "Failed to convert buffer to type. Buffer size: {}",
+                            buffer.len()
+                        ),
                     )),
                 }
             }
-            Err(err) => Err(anyhow!("{}", err)),
+            Err(err) => Err(err),
         }
     }
 
     /// Read a symbol value specifically as a string.
-    pub fn read_symbol_string_value(&mut self, symbol_name: &str) -> Result<String, anyhow::Error> {
+    pub fn read_symbol_string_value(&mut self, symbol_name: &str) -> Result<String> {
         match self.read_raw_bytes(symbol_name) {
             Ok(buffer) => vec_to_string(&buffer),
-            Err(err) => Err(anyhow!("{}", err)),
+            Err(err) => Err(err),
         }
     }
 
     /// Write the value of the specified type to the target. The type is serialized and transmitted.
     /// Dynamic types (like Vec or String) are not supported.
-    pub fn write_symbol_value<T: AsBytes>(
-        &mut self,
-        symbol_name: &str,
-        value: T,
-    ) -> Result<(), anyhow::Error> {
+    pub fn write_symbol_value<T: AsBytes>(&mut self, symbol_name: &str, value: T) -> Result<()> {
         let bytes = value.as_bytes();
 
         // Here, you would write the logic to send `bytes` to the PLC.
@@ -1106,11 +1113,7 @@ impl AdsClient {
 
     /// Write a string slice to the target. The string is converted to bytes and transmitted.
     /// Note that the typical string in the PLC will be using 8-bit ASCII text.
-    pub fn write_symbol_string_value(
-        &mut self,
-        symbol_name: &str,
-        value: &str,
-    ) -> Result<(), anyhow::Error> {
+    pub fn write_symbol_string_value(&mut self, symbol_name: &str, value: &str) -> Result<()> {
         let bytes = value.as_bytes();
 
         // Here, you would write the logic to send `bytes` to the PLC.
@@ -1125,19 +1128,22 @@ impl AdsClient {
         &mut self,
         symbol_name: &str,
         value: &VariantValue,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<()> {
         if let Ok(symbol_info) = self.symbol_collection.get_symbol_info(symbol_name) {
             match serialize(&self.symbol_collection, &symbol_info, value) {
                 Ok(bytes) => {
                     //log::debug!("\n{:?}\n", bytes);
                     self.write_raw_bytes(symbol_name, &bytes)
                 }
-                Err(err) => Err(anyhow!("Failed to serialize value: {}", err)),
+                Err(err) => Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Failed to serialize value: {err}"),
+                )),
             }
         } else {
-            Err(anyhow!(
-                "Failed to find information on symbol {}",
-                symbol_name
+            Err(Error::new(
+                ErrorKind::Other,
+                format!("Failed to find information on symbol {symbol_name}",),
             ))
         }
     }
@@ -1154,15 +1160,11 @@ impl AdsClient {
     /// # Parameters
     /// - `json_val`: The JSON value to convert.
     /// - `symbol_info`: Metadata describing the symbol's data type and structure.
-    ///
-    /// # Returns
-    /// - `Ok(VariantValue)`: The converted value wrapped in a `VariantValue` enum.
-    /// - `Err(anyhow::Error)`: Error if the conversion fails due to type mismatches or missing information.
     pub fn convert_json_to_variant(
         &self,
         json_val: &serde_json::Value,
         symbol_info: &AdsSymbolInfo,
-    ) -> Result<VariantValue, anyhow::Error> {
+    ) -> Result<VariantValue> {
         if let Some(dt) = self
             .symbol_collection
             .get_fundamental_type_info(symbol_info)
@@ -1177,77 +1179,105 @@ impl AdsClient {
                         }
                         Ok(VariantValue::Array(variant_array))
                     }
-                    _ => Err(anyhow::anyhow!(
-                        "Expected a JSON array for array type symbol"
+                    _ => Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "Expected a JSON array for array type symbol",
                     )),
                 }
             } else if let Ok(type_id) = AdsDataTypeId::try_from(dt.data_type) {
                 //log::debug!("type_id: {:?}", type_id);
 
                 match type_id {
-                    AdsDataTypeId::Void => {
-                        Err(anyhow::anyhow!("Cannot write to a void type value"))
-                    }
+                    AdsDataTypeId::Void => Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "Cannot write to a void type value",
+                    )),
                     AdsDataTypeId::Int8 => json_val
                         .as_i64()
                         .map(|x| VariantValue::SByte(x as i8))
-                        .ok_or_else(|| anyhow::anyhow!("Invalid value for Int8")),
+                        .ok_or_else(|| {
+                            Error::new(ErrorKind::InvalidInput, "Invalid value for Int8")
+                        }),
                     AdsDataTypeId::UInt8 => json_val
                         .as_u64()
                         .map(|x| VariantValue::Byte(x as u8))
-                        .ok_or_else(|| anyhow::anyhow!("Invalid value for UInt8")),
+                        .ok_or_else(|| {
+                            Error::new(ErrorKind::InvalidInput, "Invalid value for UInt8")
+                        }),
                     AdsDataTypeId::Int16 => json_val
                         .as_i64()
                         .map(|x| VariantValue::Int16(x as i16))
-                        .ok_or_else(|| anyhow::anyhow!("Invalid value for Int16")),
+                        .ok_or_else(|| {
+                            Error::new(ErrorKind::InvalidInput, "Invalid value for Int16")
+                        }),
                     AdsDataTypeId::UInt16 => json_val
                         .as_u64()
                         .map(|x| VariantValue::UInt16(x as u16))
-                        .ok_or_else(|| anyhow::anyhow!("Invalid value for UInt16")),
+                        .ok_or_else(|| {
+                            Error::new(ErrorKind::InvalidInput, "Invalid value for UInt16")
+                        }),
                     AdsDataTypeId::Int32 => json_val
                         .as_i64()
                         .map(|x| VariantValue::Int32(x as i32))
-                        .ok_or_else(|| anyhow::anyhow!("Invalid value for Int32")),
+                        .ok_or_else(|| {
+                            Error::new(ErrorKind::InvalidInput, "Invalid value for Int32")
+                        }),
                     AdsDataTypeId::UInt32 => json_val
                         .as_u64()
                         .map(|x| VariantValue::UInt32(x as u32))
-                        .ok_or_else(|| anyhow::anyhow!("Invalid value for UInt32")),
-                    AdsDataTypeId::Int64 => json_val
-                        .as_i64()
-                        .map(VariantValue::Int64)
-                        .ok_or_else(|| anyhow::anyhow!("Invalid value for Int64")),
-                    AdsDataTypeId::UInt64 => json_val
-                        .as_u64()
-                        .map(VariantValue::UInt64)
-                        .ok_or_else(|| anyhow::anyhow!("Invalid value for UInt64")),
+                        .ok_or_else(|| {
+                            Error::new(ErrorKind::InvalidInput, "Invalid value for UInt32")
+                        }),
+                    AdsDataTypeId::Int64 => {
+                        json_val.as_i64().map(VariantValue::Int64).ok_or_else(|| {
+                            Error::new(ErrorKind::InvalidInput, "Invalid value for Int64")
+                        })
+                    }
+                    AdsDataTypeId::UInt64 => {
+                        json_val.as_u64().map(VariantValue::UInt64).ok_or_else(|| {
+                            Error::new(ErrorKind::InvalidInput, "Invalid value for UInt64")
+                        })
+                    }
                     AdsDataTypeId::Real32 => {
                         if let Some(val) = json_val.as_f64() {
                             return Ok(VariantValue::Real32(val as f32));
                         } else {
-                            return Err(anyhow::anyhow!("Invalid value for Real32"));
+                            return Err(Error::new(
+                                ErrorKind::InvalidInput,
+                                "Invalid value for Real32",
+                            ));
                         }
                     }
                     AdsDataTypeId::Real64 => {
                         if let Some(val) = json_val.as_f64() {
                             return Ok(VariantValue::Real64(val));
                         } else {
-                            return Err(anyhow::anyhow!("Invalid value for Real32"));
+                            return Err(Error::new(
+                                ErrorKind::InvalidInput,
+                                "Invalid value for Real32",
+                            ));
                         }
                     }
                     AdsDataTypeId::String | AdsDataTypeId::WString => json_val
                         .as_str()
                         .map(|s| VariantValue::String(s.to_string()))
-                        .ok_or_else(|| anyhow::anyhow!("Invalid value for String types")),
-                    AdsDataTypeId::Bit => json_val
-                        .as_bool()
-                        .map(VariantValue::Bit)
-                        .ok_or_else(|| anyhow::anyhow!("Invalid value for bool")),
+                        .ok_or_else(|| {
+                            Error::new(ErrorKind::InvalidInput, "Invalid value for String types")
+                        }),
+                    AdsDataTypeId::Bit => {
+                        json_val.as_bool().map(VariantValue::Bit).ok_or_else(|| {
+                            Error::new(ErrorKind::InvalidInput, "Invalid value for bool")
+                        })
+                    }
                     AdsDataTypeId::BigType => {
                         if let serde_json::Value::Object(map) = json_val {
                             let mut object = IndexMap::new();
                             for field in &dt.fields {
                                 let field_value = map.get(&field.name).ok_or_else(|| {
-                                    anyhow::anyhow!("Field '{}' missing in input JSON", field.name)
+                                    Error::new(
+                                        ErrorKind::InvalidInput,
+                                        format!("Field '{}' missing in input JSON", field.name),
+                                    )
                                 })?;
                                 let field_variant =
                                     self.convert_json_to_variant(field_value, field)?;
@@ -1255,20 +1285,30 @@ impl AdsClient {
                             }
                             Ok(VariantValue::Object(Box::new(object)))
                         } else {
-                            Err(anyhow::anyhow!(
-                                "Expected a JSON object for structure serialization"
+                            Err(Error::new(
+                                ErrorKind::InvalidInput,
+                                "Expected a JSON object for structure serialization",
                             ))
                         }
                     }
-                    _ => Err(anyhow::anyhow!("Unsupported data type ID")),
+                    _ => Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "Unsupported data type ID",
+                    )),
                 }
             } else {
-                return Err(anyhow!("Unsupported data type id {}", dt.data_type));
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    format!("Unsupported data type id {}", dt.data_type),
+                ));
             }
         } else {
-            Err(anyhow::anyhow!(
-                "Failed to retrieve fundamental type info for {}",
-                symbol_info.name
+            Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "Failed to retrieve fundamental type info for {}",
+                    symbol_info.name
+                ),
             ))
         }
     }
@@ -1284,87 +1324,98 @@ impl AdsClient {
     /// # Parameters
     /// - `json_val`: The JSON value to convert.
     /// - `dt`: The detailed data type information used for the conversion.
-    ///
-    /// # Returns
-    /// - `Ok(VariantValue)`: The converted value wrapped in a `VariantValue` enum.
-    /// - `Err(anyhow::Error)`: Error if the conversion fails due to type mismatches or unsupported data types.
     fn convert_json_value_to_variant(
         &self,
         json_val: &serde_json::Value,
         dt: &AdsDataTypeInfo,
-    ) -> Result<VariantValue, anyhow::Error> {
+    ) -> Result<VariantValue> {
         if let Ok(type_id) = AdsDataTypeId::try_from(dt.data_type) {
             match type_id {
-                AdsDataTypeId::Void => Err(anyhow::anyhow!("Cannot write to a void type value")),
+                AdsDataTypeId::Void => Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "Cannot write to a void type value",
+                )),
                 AdsDataTypeId::Int8 => json_val
                     .as_i64()
                     .map(|x| VariantValue::SByte(x as i8))
-                    .ok_or_else(|| anyhow::anyhow!("Invalid value for Int8")),
+                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Int8")),
                 AdsDataTypeId::UInt8 => json_val
                     .as_u64()
                     .map(|x| VariantValue::Byte(x as u8))
-                    .ok_or_else(|| anyhow::anyhow!("Invalid value for UInt8")),
+                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for UInt8")),
                 AdsDataTypeId::Int16 => json_val
                     .as_i64()
                     .map(|x| VariantValue::Int16(x as i16))
-                    .ok_or_else(|| anyhow::anyhow!("Invalid value for Int16")),
+                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Int16")),
                 AdsDataTypeId::UInt16 => json_val
                     .as_u64()
                     .map(|x| VariantValue::UInt16(x as u16))
-                    .ok_or_else(|| anyhow::anyhow!("Invalid value for UInt16")),
+                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for UInt16")),
                 AdsDataTypeId::Int32 => json_val
                     .as_i64()
                     .map(|x| VariantValue::Int32(x as i32))
-                    .ok_or_else(|| anyhow::anyhow!("Invalid value for Int32")),
+                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Int32")),
                 AdsDataTypeId::UInt32 => json_val
                     .as_u64()
                     .map(|x| VariantValue::UInt32(x as u32))
-                    .ok_or_else(|| anyhow::anyhow!("Invalid value for UInt32")),
+                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for UInt32")),
                 AdsDataTypeId::Int64 => json_val
                     .as_i64()
                     .map(VariantValue::Int64)
-                    .ok_or_else(|| anyhow::anyhow!("Invalid value for Int64")),
+                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Int64")),
                 AdsDataTypeId::UInt64 => json_val
                     .as_u64()
                     .map(VariantValue::UInt64)
-                    .ok_or_else(|| anyhow::anyhow!("Invalid value for UInt64")),
+                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for UInt64")),
                 AdsDataTypeId::Real32 => json_val
                     .as_f64()
                     .map(|x| VariantValue::Real32(x as f32))
-                    .ok_or_else(|| anyhow::anyhow!("Invalid value for Real32")),
+                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Real32")),
                 AdsDataTypeId::Real64 => json_val
                     .as_f64()
                     .map(VariantValue::Real64)
-                    .ok_or_else(|| anyhow::anyhow!("Invalid value for Real64")),
+                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for Real64")),
                 AdsDataTypeId::String | AdsDataTypeId::WString => json_val
                     .as_str()
                     .map(|s| VariantValue::String(s.to_string()))
-                    .ok_or_else(|| anyhow::anyhow!("Invalid value for String types")),
+                    .ok_or_else(|| {
+                        Error::new(ErrorKind::InvalidInput, "Invalid value for String types")
+                    }),
                 AdsDataTypeId::Bit => json_val
                     .as_bool()
                     .map(VariantValue::Bit)
-                    .ok_or_else(|| anyhow::anyhow!("Invalid value for bool")),
+                    .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "Invalid value for bool")),
                 AdsDataTypeId::BigType => {
                     if let serde_json::Value::Object(map) = json_val {
                         let mut object = IndexMap::new();
                         for field in &dt.fields {
                             let field_value = map.get(&field.name).ok_or_else(|| {
-                                anyhow::anyhow!("Field '{}' missing in input JSON", field.name)
+                                Error::new(
+                                    ErrorKind::Other,
+                                    format!("Field '{}' missing in input JSON", field.name),
+                                )
                             })?;
                             let field_variant = self.convert_json_to_variant(field_value, field)?;
                             object.insert(field.name.clone(), field_variant);
                         }
                         Ok(VariantValue::Object(Box::new(object)))
                     } else {
-                        Err(anyhow::anyhow!(
-                            "Expected a JSON object for structure serialization"
+                        Err(Error::new(
+                            ErrorKind::InvalidInput,
+                            "Expected a JSON object for structure serialization",
                         ))
                     }
                 }
-                _ => Err(anyhow::anyhow!("Unsupported data type ID")),
+                _ => Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "Unsupported data type ID",
+                )),
             }
         } else {
-            Err(anyhow!("Unsupported data type id {}", dt.data_type))
+            Err(Error::new(
+                ErrorKind::Other,
+                format!("Unsupported data type id {}", dt.data_type),
+            ))
         }
     }
 
@@ -1379,24 +1430,22 @@ impl AdsClient {
     /// # Parameters
     /// - `symbol_name`: The name of the symbol to write to.
     /// - `value`: The JSON value to write.
-    ///
-    /// # Returns
-    /// - `Ok(())`: On successful write.
-    /// - `Err(anyhow::Error)`: If there is an error in locating the symbol, converting the value, or during write.    
     pub fn write_symbol_json_value(
         &mut self,
         symbol_name: &str,
         value: &serde_json::Value,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<()> {
         match self.symbol_collection.get_symbol_info(symbol_name) {
             Ok(info) => match self.convert_json_to_variant(value, &info) {
                 Ok(var) => self.write_symbol_variant_value(symbol_name, &var),
-                Err(err) => Err(anyhow!("Error writing symbol {} : {}", symbol_name, err)),
+                Err(err) => Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Error writing symbol {symbol_name} : {err}"),
+                )),
             },
-            Err(err) => Err(anyhow!(
-                "Failed to locate info on symbol {} : {}",
-                symbol_name,
-                err
+            Err(err) => Err(Error::new(
+                ErrorKind::NotFound,
+                format!("Failed to locate info on symbol {symbol_name} : {err}"),
             )),
         }
     }
@@ -1407,7 +1456,7 @@ impl AdsClient {
         &mut self,
         symbol_name: &str,
         options: &serde_json::Map<String, serde_json::Value>,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<()> {
         if let Ok(item) = get_registered_symbol_by_name(symbol_name) {
             if item.notification_handle != 0 {
                 // already registered. Do nothing.
@@ -1439,9 +1488,9 @@ impl AdsClient {
             if let Ok(id) = AdsDataTypeId::try_from(symbol.type_id) {
                 symbol_data_type = id;
             } else {
-                return Err(anyhow!(
-                    "Failed to extract data type for symbol {}",
-                    symbol_name
+                return Err(Error::new(
+                    ErrorKind::NotFound,
+                    format!("Failed to extract data type for symbol {symbol_name}"),
                 ));
             }
 
@@ -1499,7 +1548,10 @@ impl AdsClient {
                         );
 
                         if notitication_err != 0 {
-                            return Err(anyhow!("Failed to register handle: {}", notitication_err));
+                            return Err(Error::new(
+                                ErrorKind::Other,
+                                format!("Failed to register handle: {notitication_err}"),
+                            ));
                         }
                     }
 
@@ -1516,17 +1568,19 @@ impl AdsClient {
                 Err(err) => Err(err),
             }
         } else {
-            Err(anyhow!(
-                "The requested symbol {} does not exist in the controller. 
+            Err(Error::new(
+                ErrorKind::Other,
+                format!(
+                    "The requested symbol {symbol_name} does not exist in the controller. 
                 Please check symbol name and connection properties.",
-                symbol_name
+                ),
             ))
         }
     }
 
     /// Unregister a symbol that was registered for notification. It's important to unregister
     /// a notification before closing connections, or the ADS router will get bogged down.
-    pub fn unregister_symbol(&mut self, symbol_name: &str) -> Result<(), anyhow::Error> {
+    pub fn unregister_symbol(&mut self, symbol_name: &str) -> Result<()> {
         let raw_address = &mut self.address as *mut AmsAddr;
         match get_registered_symbol_by_name(symbol_name) {
             Ok(sym) => unsafe {
@@ -1537,9 +1591,9 @@ impl AdsClient {
                 );
 
                 if notitication_err != 0 {
-                    Err(anyhow!(
-                        "Failed to remove notification: {}",
-                        notitication_err
+                    Err(Error::new(
+                        ErrorKind::Other,
+                        format!("Failed to remove notification: {notitication_err}"),
                     ))
                 } else {
                     info!("Removed notification for {}", symbol_name);
