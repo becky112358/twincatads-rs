@@ -10,7 +10,6 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-
     //
     // Select bindings based upon platform.
     //
@@ -31,7 +30,6 @@ fn main() {
         "bindings_64.rs"
     };
 
-
     // add link library include path
     println!("cargo:rustc-link-search=native={}", lib_dir);
     println!("cargo:rustc-link-lib=dylib=TcAdsDll");
@@ -44,12 +42,12 @@ fn main() {
     // the resulting bindings.
     let bindings = bindgen::Builder::default()
         // The input header we would like to generate
-        // bindings for.        
+        // bindings for.
         .header("wrapper.h")
         // Add lines to ignore certain Rust linter warnings
         .raw_line("#[allow(non_upper_case_globals)]")
         .raw_line("#[allow(non_camel_case_types)]")
-        .raw_line("#[allow(non_snake_case)]")        
+        .raw_line("#[allow(non_snake_case)]")
         // adds include dir search path
         .clang_arg("-I/TwinCAT/AdsApi/TcAdsDll/Include")
         // Tell cargo to invalidate the built crate whenever any of the
@@ -64,7 +62,10 @@ fn main() {
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     let bindings_path = out_path.join(bindings_filename);
 
-    println!("Bindings being written to: {}", bindings_path.to_str().unwrap());
+    println!(
+        "Bindings being written to: {}",
+        bindings_path.to_str().unwrap()
+    );
 
     bindings
         .write_to_file(&bindings_path)
@@ -74,5 +75,5 @@ fn main() {
     // let src_path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("src");
     // let dst_path = src_path.join(bindings_filename);
     // fs::copy(&bindings_path, &dst_path).expect("Couldn't copy bindings to src directory");
-    // println!("Bindings copied to: {}", dst_path.to_str().unwrap());    
+    // println!("Bindings copied to: {}", dst_path.to_str().unwrap());
 }

@@ -37,8 +37,8 @@ pub struct AdsSymbolInfo {
     /// Size of symbol, in bytes. 0 = bit.
     pub size: u32,
     /// Offset of dataitem in parent datatype ( in bytes )
-    pub offset : u32,
-     
+    pub offset: u32,
+
     /// ADS Data Type ID of the symbol
     pub type_id: u32,
     /// ADS Data Type of symbol.
@@ -61,7 +61,7 @@ impl AdsSymbolInfo {
             group_index: 0,
             index_offset: 0,
             size: 0,
-            offset : 0,
+            offset: 0,
             name: String::new(),
             type_id: 0,
             type_name: String::new(),
@@ -334,7 +334,6 @@ impl AdsSymbolCollection {
         };
 
         if self.symbols.contains_key(&valid_symbol_name) {
-
             let symbol = &self.symbols[&valid_symbol_name];
             let tokens = symbol_name.split(".").collect::<Vec<&str>>();
 
@@ -347,7 +346,6 @@ impl AdsSymbolCollection {
 
                 // Check if the current segment refers to a structure
                 if symbol.is_structure {
-
                     // Or a more accurate structure check
                     // Recursive call for the nested field lookup
                     let nested_field_result = self.get_symbol_info(&remaining_symbol_name);
@@ -357,28 +355,24 @@ impl AdsSymbolCollection {
                         Err(error) => return Err(error),
                     }
                 } else {
-
                     // this was a request for a specific field
                     // Loop through the fields until we find the specific one we need.
 
                     let mut tmp_symbol = symbol.clone();
-                    for i in 2.. tokens.len() {
-                        
+                    for i in 2..tokens.len() {
                         let field_name = tokens[i];
                         if let Some(dt) = self.get_fundamental_type_info(&tmp_symbol) {
                             for field in dt.fields {
                                 if field.name == field_name {
-                                    tmp_symbol = field.clone();                                    
+                                    tmp_symbol = field.clone();
                                 }
                             }
-
                         } else {
                             return Err(anyhow!(
                                 "Failed to locate information for structure field {}",
                                 field_name
                             ));
                         }
-    
                     }
 
                     return Ok(tmp_symbol);
@@ -484,13 +478,13 @@ fn parse_datatype_entry_field(
             group_index: 0,
             index_offset: 0,
             size: item.size,
-            offset : item.offs,
+            offset: item.offs,
             type_id: item.dataType,
             type_name: String::new(),
             comment: String::new(),
             is_structure: item.subItems > 0,
             is_array: false,
-            array_dimensions: Vec::new(),            
+            array_dimensions: Vec::new(),
         };
 
         let type_start = name_end + 1;

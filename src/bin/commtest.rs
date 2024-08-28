@@ -4,64 +4,57 @@
 // -----
 // Last Modified: 2024-08-15 06:45:25
 // -----
-// 
+//
 //
 
 //! Quick communications test to evalutate operation of the library.
 //! We include a test project in the source directory that can be
 //! downloaded to a TC PLC instance for use in testing this
-//! 
+//!
 
+use log::{error, info};
+use mechutil::variant::VariantValue;
+use simplelog::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use log::{info, error};
-use mechutil::variant::VariantValue;
-use simplelog::*;
 
-use twincatads_rs::client::{AdsClient, MaxString, AdsState, RouterState};
-
+use twincatads_rs::client::{AdsClient, AdsState, MaxString, RouterState};
 
 /// Main entry point of the program.
 #[tokio::main]
 async fn main() {
-
     // Configure logging
-    CombinedLogger::init(vec![
-        TermLogger::new(
-            LevelFilter::Debug,
-            Config::default(),
-            TerminalMode::Mixed,
-            ColorChoice::Auto,
-        )
-    ])
+    CombinedLogger::init(vec![TermLogger::new(
+        LevelFilter::Debug,
+        Config::default(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    )])
     .unwrap();
 
     let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();    
+    let r = running.clone();
 
-
-    
     let (mut client, mut rx) = AdsClient::new();
     // Supply AMS Address. If not set, localhost is used.
     // client.set_address("192.168.127.1.1.1"); // C6015 test unit
-     client.set_address("5.78.94.236.1.1");   // VM test instance
-    // client.set_address("5.78.94.236.1.1");   // CX3 Test Unit
+    client.set_address("5.78.94.236.1.1"); // VM test instance
+                                           // client.set_address("5.78.94.236.1.1");   // CX3 Test Unit
 
     // Supply ADS port. If not set, the default of 851 is used.
     // You should generally use the default.
     client.set_port(851);
-     
+
     // Make the connection to the ADS router
     while let Err(err) = client.initialize() {
         log::error!("Failed to initialize client: {}", err);
         tokio::time::sleep(Duration::from_secs(7)).await;
-        
+
         // For non async functions, use:
         // thread::sleep(Duration::from_secs(7));
     }
-
 
     // if let Err(err) = client.write_symbol_variant_value("GNV.nClubBackPosition", &VariantValue::UInt32(855)) {
     //     log::error!("Failed to write symbol: {}", err);
@@ -76,8 +69,6 @@ async fn main() {
     // else {
     //     log::info!("Successfully wrote symbol.");
     // }
-
-
 
     // let js_bool = serde_json::json!(true);
     // if let Err(err) = client.write_symbol_json_value("GM.bBoolTarget", &js_bool) {
@@ -94,7 +85,7 @@ async fn main() {
     // else {
     //     log::info!("Successfully wrote out JSON int.");
     // }
-    
+
     // let js_real = serde_json::json!(9.876);
     // if let Err(err) = client.write_symbol_json_value("GM.fRealWriteTarget", &js_real) {
     //     log::error!("An error occurred writing real from json: {}", err);
@@ -102,7 +93,6 @@ async fn main() {
     // else {
     //     log::info!("Successfully wrote out JSON real.");
     // }
-
 
     // let js_string= serde_json::json!("Test some JSON!");
     // if let Err(err) = client.write_symbol_json_value("GM.sJsonTarget", &js_string) {
@@ -112,15 +102,9 @@ async fn main() {
     //     log::info!("Successfully wrote out JSON string.");
     // }
 
-
-
-    
-
-
     // let js_array = serde_json::json!(
     //     [1.2,2.3,3.4,4.5,5.6,6.7,7.8,8.9,9.1,10.2]
     // );
-
 
     // if let Err(err) = client.write_symbol_json_value("GM.aArrayJsonWriteTarget", &js_array) {
     //     log::error!("An error occurred writing array from json: {}", err);
@@ -128,7 +112,6 @@ async fn main() {
     // else {
     //     log::info!("Successfully wrote out JSON array.");
     // }
-
 
     // let js_struct= serde_json::json!({
     //     "fReal" : 1.234,
@@ -156,7 +139,6 @@ async fn main() {
     //     {"fReal" : 1.0101,"nInt" : 79,"bBit" : false},
     // ]);
 
-
     // Practical test of S_SeqeuenceItem array in our Club Durability systems.
     // let js_struct_array= serde_json::json!([
     //     {"fX" : 10.123,"fY" : 1,"fPsi" : 1, "nHits" : 1, "bStop" : true},
@@ -171,14 +153,13 @@ async fn main() {
     //     {"fX" : 1.0101,"fY" : 10,"fPsi" : 10, "nHits" : 10, "bStop" :false},
     // ]);
 
-
     // if let Err(err) = client.write_symbol_json_value("GM.stSequenceCollection.aData", &js_struct_array) {
     //     log::error!("An error occurred writing array of struct from json: {}", err);
     // }
     // else {
     //     log::info!("Successfully wrote out JSON array of struct.");
     // }
-    
+
     // // Write a value to a symbol in the PLC
     // if let Err(err) = client.write_symbol_string_value(
     //     "GM.sTarget",
@@ -187,14 +168,12 @@ async fn main() {
     //     println!("An error occurred writing the tag: {}", err);
     // }
 
-
     // if let Err(err) = client.write_symbol_value::<MaxString>(
     //     "GM.sTarget",
     //     MaxString::from_string("I'm not even supposed to be here today.")
     // ) {
     //     println!("An error occurred writing <MaxString> for: {}", err);
     // }
-
 
     // match client.read_symbol_value::<MaxString>("GM.sEcho") {
     //     Ok(val) => info!("STRING VALUE: {:?}", val.to_string()),
@@ -205,19 +184,18 @@ async fn main() {
     // match client.read_symbol_value::<MaxString>("GK.sReadTest") {
     //     Ok(val) => info!("STRING VALUE: {:?}", val.to_string()),
     //     Err(err) => error!("I failed to read the string tag: {}", err)
-    // }    
+    // }
 
-    // log::info!("However, read_symbol_string_value(\"GK.sReadTest\") works fine.");    
+    // log::info!("However, read_symbol_string_value(\"GK.sReadTest\") works fine.");
     // match client.read_symbol_string_value("GK.sReadTest") {
     //     Ok(val) => info!("STRING VALUE: {:?}", val.to_string()),
     //     Err(err) => error!("I failed to read the string tag: {}", err)
-    // }        
-    
+    // }
+
     // match client.read_symbol_string_value("GM.sEcho") {
     //     Ok(val) => info!("STRING VALUE: {:?}", val.to_string()),
     //     Err(err) => error!("I failed to read the string tag: {}", err)
-    // }    
-
+    // }
 
     // Test that 2D arrays are working, and that we haven't broken
     // 1D and arrays of structures.
@@ -225,24 +203,23 @@ async fn main() {
     // read 1d array
     match client.read_symbol_by_name("GM.aTest") {
         Ok(res) => log::debug!("READ 1D Array: {:?}", res),
-        Err(err) => log::error!("Failed to read 1D array: {}", err)
-    }    
+        Err(err) => log::error!("Failed to read 1D array: {}", err),
+    }
 
     // read 2d array
     match client.read_symbol_by_name("P_SwingAxes.fbSwingArm.aMotionPoints") {
         Ok(res) => log::debug!("READ 2D Array: {:?}", res),
-        Err(err) => log::error!("Failed to read 2D array: {}", err)
+        Err(err) => log::error!("Failed to read 2D array: {}", err),
     }
 
     match client.read_symbol_by_name("P_SwingAxes.fbSwingArm.aInputPoints") {
         Ok(res) => log::debug!("READ Array of structure: {:?}", res),
-        Err(err) => log::error!("Failed to read array of structure: {}", err)
+        Err(err) => log::error!("Failed to read array of structure: {}", err),
     }
 
     // if let Ok(res) = client.read_symbol_by_name("GIO.axisPress.stMotionSettings") {
     //     log::debug!("READ STRUCTURE: {:?}", res);
     // }
-    
 
     // // let tst = serde_json::json!({"eMoveType": 0, "fAccel": 100, "fDecel": 100, "fLoad": 0, "fPosition": 88, "fSecondarySpeed": 0, "fSpeed": 6});
     // let tst = serde_json::json!({"eMoveType": 0, "fAccel": 1, "fDecel": 2, "fLoad": 3, "fPosition": 4, "fSecondarySpeed": 5, "fSpeed": 6});
@@ -254,16 +231,13 @@ async fn main() {
     //     log::info!("Successfully wrote motion structure from JSON.");
     // }
 
-
     // // "GM.stSequenceCollection"; // "GM.fbData.stCollection.nNumRows"; // GM.stSequenceCollection.nLoopSet
 
     // const NOTIFY_TAG :&str = "GM.stSequenceCollection.nLoopSet";
     // const WRITE_TAG : &str = "GM.aArrayWriteTarget";
 
-
-    
     // let options : serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
-    
+
     // if let Err(err) = client.register_symbol(NOTIFY_TAG, &options) {
     //     error!("Failed to register symbol: {}", err);
     // }
@@ -276,7 +250,6 @@ async fn main() {
     //     else {
     //         log::info!("... second registration should have been skipped.");
     //     }
-        
 
     //     // Second channel for sending notifications back to the main thread
     //     let (tx_main, mut rx_main) = mpsc::channel(100);
@@ -285,14 +258,14 @@ async fn main() {
 
     //     // On the parent context (e.g., main thread), listen for notifications
     //     let t1 = tokio::spawn(async move {
-            
+
     //         while t1_running.load(Ordering::Relaxed) {
     //             let timeout_duration = Duration::from_millis(4000);
     //             let result = {
-                    
+
     //                 tokio::time::timeout(timeout_duration, rx.recv()).await
     //             };
-    
+
     //             match result {
     //                 Ok(Some(notification)) => {
     //                     if let Err(err) = tx_main.send(notification).await {
@@ -314,7 +287,6 @@ async fn main() {
     //         log::info!("T1 task has closed.");
     //     });
 
-
     //     let mut blink = false;
 
     //     let t2 = tokio::spawn(async move {
@@ -324,7 +296,7 @@ async fn main() {
 
     //                     // log::info!("Notification type {:?} received in main thread\n\n{:?}\n\n",  notification.event_type, notification.value);
     //                     log::info!("Notification type {:?} received in main thread",  notification.event_type);
-                        
+
     //                     match notification.event_type {
     //                         twincatads_rs::client::client_types::EventInfoType::Invalid => {
     //                             log::error!("Invalid notification received.");
@@ -333,23 +305,23 @@ async fn main() {
 
     //                             // if let Err(err) = client.write_symbol_variant_value(WRITE_TAG, &notification.value) {
     //                             //     log::error!("Failed to write struct to client: {}", err);
-            
+
     //                             // }
     //                             // else {
     //                             //     blink = !blink;
     //                             //     let var_blink = VariantValue::Bit(!blink);
-            
+
     //                             //     if let Err(err) = client.write_symbol_variant_value("GM.bBoolTarget", &var_blink) {
     //                             //         log::error!("Failed to write bool from variant to client: {}", err);
     //                             //     }
-            
+
     //                             // }
-            
+
     //                         },
     //                         twincatads_rs::client::client_types::EventInfoType::AdsState => {
     //                             match AdsState::from(notification.value) {
     //                                 AdsState::Running=> log::info!("Target device is RUNNING"),
-    //                                 AdsState::Stopped => log::info!("Target device is STOPPED"),                                
+    //                                 AdsState::Stopped => log::info!("Target device is STOPPED"),
     //                                 AdsState::Unknown => log::info!("Target device is in an unknown state."),
     //                             }
     //                         },
@@ -364,9 +336,8 @@ async fn main() {
     //                         twincatads_rs::client::client_types::EventInfoType::SymbolTableChange => {
     //                             log::info!("The Symbol Table has changed in the target device.");
     //                             client.reregister_all_symbols();
-    //                         },                            
+    //                         },
     //                     }
-
 
     //                 },
     //                 None => {
@@ -382,20 +353,19 @@ async fn main() {
     //                 //     }
     //                 // },
     //             }
-    //         }        
+    //         }
 
     //         log::info!("Shutting down ADS client...");
     //         // Make sure the ADS client is closed.
     //         client.finalize().await;
 
     //         log::info!("T2 task has closed.");
-            
+
     //     });
 
-        
-        // if let Err(err) = client.unregister_symbol(NOTIFY_TAG) {
-        //     error!("Failed to unregister symbol: {} ", err);
-        // }
+    // if let Err(err) = client.unregister_symbol(NOTIFY_TAG) {
+    //     error!("Failed to unregister symbol: {} ", err);
+    // }
 
     //     // Handling of ctrl+C or SIGINT
     //     let ctrl_c_future = tokio::signal::ctrl_c();
@@ -408,7 +378,7 @@ async fn main() {
     //     r.store(false, Ordering::SeqCst);
 
     //     if let Err(err) = t1.await {
-    //         log::error!("Failed to wait for T1 to shut down. May not have shut down properly. {} ", 
+    //         log::error!("Failed to wait for T1 to shut down. May not have shut down properly. {} ",
     //             err
     //         );
     //     }
@@ -416,9 +386,8 @@ async fn main() {
     //         log::info!("T1 task reports closed. Checking T2...");
     //     }
 
-
     //     if let Err(err) = t2.await {
-    //         log::error!("Failed to wait for T2 to shut down. May not have shut down properly. {} ", 
+    //         log::error!("Failed to wait for T2 to shut down. May not have shut down properly. {} ",
     //             err
     //         );
     //     }
@@ -427,7 +396,6 @@ async fn main() {
     //     }
 
     // }
-    
+
     info!("Goodbye!");
-    
 }

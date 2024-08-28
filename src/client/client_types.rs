@@ -4,32 +4,28 @@
 // -----
 // Last Modified: 2024-05-17 07:03:10
 // -----
-// 
+//
 //
 
+//! Types used through the client module.
 
-//! Types used through the client module. 
-
-
-use std::fmt;
-use serde::{Serialize, Deserialize, Serializer, Deserializer, de::Visitor};
-use zerocopy_derive::{AsBytes, FromBytes, FromZeroes};
-use std::time::{Duration, Instant, SystemTime};
 use super::ads_data::AdsDataTypeId;
 use mechutil::variant::VariantValue;
+use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
+use std::time::{Duration, Instant, SystemTime};
+use zerocopy_derive::{AsBytes, FromBytes, FromZeroes};
 
-
-lazy_static!{
+lazy_static! {
     /// A static reference Instant, initialized at application start.
     static ref REFERENCE_INSTANT: Instant = Instant::now();
 }
-
 
 /// Enumerates the type of event that is being transmitted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EventInfoType {
     Invalid = 0,
-    /// The value of a symbol in the target device has changed. 
+    /// The value of a symbol in the target device has changed.
     /// When a symbol is initially registered for on data change notification, an initial notification of its
     /// current value will be broadcast.
     DataChange = 1,
@@ -41,24 +37,22 @@ pub enum EventInfoType {
     /// Note that Router callbacks will only be issued when the Router state changes, and there
     /// will be no initial callback when the connection is made, unlike other notification types.
     RouterState = 3,
-    /// The state of the symbol table in the target device has changed. 
+    /// The state of the symbol table in the target device has changed.
     /// This requires unregistering and re-registering all handles and notifications.
     SymbolTableChange = 10,
 }
 
 /// Stores the event details from a notification from
-/// the ADS router. This structure is passed via a channel from the 
+/// the ADS router. This structure is passed via a channel from the
 /// ADS Router thread context into the thread context of the AdsClient.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouterNotificationEventInfo {
-
     /// The type of event that is being transmitted.
-    pub event_type : EventInfoType,
+    pub event_type: EventInfoType,
     /// Id of the symbol about which the notification was received.
-    pub id : u32,
+    pub id: u32,
     /// The bytes received from the ADS router    
-    pub data : Vec<u8>
-    
+    pub data: Vec<u8>,
 }
 
 /// Serialize `Instant` as a Unix timestamp in milliseconds
@@ -101,85 +95,83 @@ where
     deserializer.deserialize_u64(InstantVisitor)
 }
 
-
 /// Notification data for a registered symbol data change event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AdsClientNotification {    
+pub struct AdsClientNotification {
     /// The type of event that is being transmitted.
-    pub event_type : EventInfoType,
+    pub event_type: EventInfoType,
     /// Monotonic tick representing when the notification was received.
-    #[serde(serialize_with = "serialize_instant", deserialize_with = "deserialize_instant")]
+    #[serde(
+        serialize_with = "serialize_instant",
+        deserialize_with = "deserialize_instant"
+    )]
     pub timestamp: Instant,
     /// Name of the symbol or tag for which this value was received
     /// if event_info is DataChange. Not used for other types.
-    pub name : String,
+    pub name: String,
     /// The value received
-    pub value : VariantValue
+    pub value: VariantValue,
 }
 
 impl AdsClientNotification {
-
     /// Construct a new DataChangeNotification with the current timestamp.
     pub fn new() -> Self {
-        return Self { 
-            event_type : EventInfoType::Invalid,
-            timestamp : Instant::now(),
+        return Self {
+            event_type: EventInfoType::Invalid,
+            timestamp: Instant::now(),
             name: String::new(),
-            value: VariantValue::Null
+            value: VariantValue::Null,
         };
     }
 
-    pub fn new_datachange(name : &str, val : &VariantValue) -> Self {
-        return Self { 
-            event_type : EventInfoType::DataChange,
-            timestamp : Instant::now(),
+    pub fn new_datachange(name: &str, val: &VariantValue) -> Self {
+        return Self {
+            event_type: EventInfoType::DataChange,
+            timestamp: Instant::now(),
             name: name.to_string(),
-            value: val.clone()
+            value: val.clone(),
         };
-    }    
+    }
 
-    pub fn new_ads_state(state : i16) -> Self {
-        return Self { 
-            event_type : EventInfoType::AdsState,
-            timestamp : Instant::now(),
+    pub fn new_ads_state(state: i16) -> Self {
+        return Self {
+            event_type: EventInfoType::AdsState,
+            timestamp: Instant::now(),
             name: String::new(),
-            value: VariantValue::from(state)
+            value: VariantValue::from(state),
         };
-    }    
+    }
 
-    pub fn new_router_state(state : i16) -> Self {
-        return Self { 
-            event_type : EventInfoType::RouterState,
-            timestamp : Instant::now(),
+    pub fn new_router_state(state: i16) -> Self {
+        return Self {
+            event_type: EventInfoType::RouterState,
+            timestamp: Instant::now(),
             name: String::new(),
-            value: VariantValue::from(state)
+            value: VariantValue::from(state),
         };
-    }    
+    }
 
     /// Creates an event that represents a change to the symbol table.
     pub fn new_symbol_table() -> Self {
-        return Self { 
-            event_type : EventInfoType::SymbolTableChange,
-            timestamp : Instant::now(),
+        return Self {
+            event_type: EventInfoType::SymbolTableChange,
+            timestamp: Instant::now(),
             name: String::new(),
-            value: VariantValue::Null
+            value: VariantValue::Null,
         };
-    }    
-
+    }
 }
 
-/// Properties of a symbol that has been successfully registered for 
+/// Properties of a symbol that has been successfully registered for
 /// on-change notification.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisteredSymbol {
-    pub handle : u32,
-    pub notification_handle : u32,
-    pub name : String,
-    pub data_type_id : AdsDataTypeId,
-    pub options : serde_json::Map<String, serde_json::Value>
+    pub handle: u32,
+    pub notification_handle: u32,
+    pub name: String,
+    pub data_type_id: AdsDataTypeId,
+    pub options: serde_json::Map<String, serde_json::Value>,
 }
-
-
 
 /// A public type for fixed-length strings in the PLC. Represents
 /// T_MaxString, which is an array of 255 character bytes.
@@ -187,17 +179,15 @@ pub struct RegisteredSymbol {
 /// shorter length.
 #[repr(C)]
 #[derive(FromBytes, FromZeroes, AsBytes, Debug, Clone, Copy)]
-pub struct MaxString([u8;256]);
-
+pub struct MaxString([u8; 256]);
 
 /// Implement a default value for MaxString, which is an array of character bytes.
-///  Rust automatically implements Default for arrays with up to 32 elements. 
+///  Rust automatically implements Default for arrays with up to 32 elements.
 /// For arrays larger than that, you must manually implement Default.
 impl Default for MaxString {
     fn default() -> Self {
         MaxString([0; 256])
     }
-    
 }
 
 impl fmt::Display for MaxString {
@@ -210,14 +200,12 @@ impl fmt::Display for MaxString {
     }
 }
 
-
 impl MaxString {
     // Method to convert MaxString to a Rust String
     pub fn to_string(&self) -> Result<String, std::string::FromUtf8Error> {
         if let Some(end_index) = self.0.iter().position(|&c| c == 0x00) {
             return String::from_utf8(self.0[..end_index].to_vec());
-        }
-        else {
+        } else {
             return Ok(String::from(""));
         }
     }
@@ -228,10 +216,8 @@ impl MaxString {
         let bytes = &s.as_bytes()[..s.len().min(255)];
         array[..bytes.len()].copy_from_slice(bytes);
         MaxString(array)
-    }    
+    }
 }
-
-
 
 /// Defines the ADS state of a target device. Generally, this means
 /// whether or not the PLC is in RUN or STOPPED.
@@ -262,7 +248,6 @@ impl From<i16> for AdsState {
     }
 }
 
-
 impl From<VariantValue> for AdsState {
     fn from(value: VariantValue) -> Self {
         match value {
@@ -270,7 +255,7 @@ impl From<VariantValue> for AdsState {
                 5 => AdsState::Running,
                 6 => AdsState::Stopped,
                 _ => AdsState::Unknown,
-            },            
+            },
             VariantValue::Int16(v) => match v {
                 5 => AdsState::Running,
                 6 => AdsState::Stopped,
@@ -292,14 +277,12 @@ impl From<VariantValue> for AdsState {
     }
 }
 
-
-
-/// Defines the state of the ADS Router. 
+/// Defines the state of the ADS Router.
 /// Use this enumeration to easily convert notifications from the client.
-/// 
+///
 /// Note that Router callbacks will only be issued when the Router state changes, and there
 /// will be no initial callback when the connection is made, unlike other notification types.
-/// 
+///
 /// ```ignore
 /// match RouterState::from(notification.value) {
 ///     RouterState::Started => log::info!("Router is RUNNING"),
@@ -313,12 +296,11 @@ pub enum RouterState {
     /// No information is known about the target device
     Unknown = -1,
     /// The router stopped.
-    Stopped = 0,    
+    Stopped = 0,
     /// The router started.
     Started = 1,
     /// The router has been removed.
-    Removed = 2
-
+    Removed = 2,
 }
 
 impl From<i16> for RouterState {
@@ -340,7 +322,7 @@ impl From<VariantValue> for RouterState {
                 0 => RouterState::Stopped,
                 2 => RouterState::Removed,
                 _ => RouterState::Unknown,
-            },            
+            },
             VariantValue::Int16(v) => match v {
                 1 => RouterState::Started,
                 0 => RouterState::Stopped,
